@@ -41,6 +41,14 @@ $ flutter run --flavor staging --target lib/main_staging.dart
 $ flutter run --flavor production --target lib/main_production.dart
 ```
 
+### 🗄️ Database Setup
+The application requires a pre-populated database asset at `assets/database/app.db`. 
+
+To generate a mock database for development:
+```sh
+$ dart run tool/mock_db_generator.dart
+```
+
 ---
 
 ## Running Tests 🧪
