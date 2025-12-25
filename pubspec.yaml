@@ -9,15 +9,23 @@ environment:
 
 dependencies:
   bloc: ^9.0.1
+  drift: ^2.20.3
+  drift_flutter: ^0.2.2
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  sqlite3_flutter_libs: ^0.5.41
+
 
 dev_dependencies:
   bloc_test: ^10.0.0
+  build_runner: ^2.4.13
+  drift_dev: ^2.20.3
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
@@ -30,6 +38,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/database/
 
 flutter_launcher_icons:
   image_path: "assets/images/icon_fg.png"
