@@ -52,8 +52,6 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "mneme");
   }
 
-  gtk_window_set_icon_from_file(GTK_WINDOW(window), "assets/images/logo.png", NULL);
-
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
