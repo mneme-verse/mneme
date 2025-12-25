@@ -1,0 +1,7 @@
+{
+    "@@locale": "en",
+    "appTitle": "Mneme MVP",
+    "@appTitle": {
+        "description": "Text shown in the AppBar of the App"
+    }
+}
