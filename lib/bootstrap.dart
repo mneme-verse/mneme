@@ -33,7 +33,9 @@ Future<void> bootstrap(
   Bloc.observer = const AppBlocObserver();
 
   // Add cross-flavor configuration here
-  final db = AppDatabase(openConnection());
+  // TODO(rominf): Determine language dynamically based on user reference or
+  // system locale
+  final db = AppDatabase(openConnection(name: 'en'));
   final repo = PoetryRepository(db);
 
   runApp(await builder(repo));

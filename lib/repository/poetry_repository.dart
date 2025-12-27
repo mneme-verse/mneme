@@ -16,12 +16,10 @@ class PoetryRepository {
     int limit = 20,
     int offset = 0,
   }) async {
-    // If query is empty, just return standard list filtered by language
+    // If query is empty, return standard list
+    // (active DB is already language specific)
     if (query.trim().isEmpty) {
-      return (_db.select(_db.poems)
-            ..where((t) => t.language.isIn(activeLanguages))
-            ..limit(limit, offset: offset))
-          .get();
+      return (_db.select(_db.poems)..limit(limit, offset: offset)).get();
     }
 
     // Use customSelect for FTS5
@@ -37,20 +35,16 @@ class PoetryRepository {
     // placeholders.
 
     final searchTerm = query.trim();
-    final placeholders = List.filled(activeLanguages.length, '?').join(',');
-    final sql =
-        '''
+    const sql = '''
       SELECT poems.* 
       FROM poems 
       JOIN poems_fts ON poems.id = poems_fts.rowid 
       WHERE poems_fts MATCH ? 
-      AND poems.language IN ($placeholders) 
       LIMIT ? OFFSET ?
     ''';
 
     final variables = [
       Variable.withString(searchTerm),
-      ...activeLanguages.map(Variable.withString),
       Variable.withInt(limit),
       Variable.withInt(offset),
     ];
@@ -70,7 +64,6 @@ class PoetryRepository {
   /// Get a random poem from the active languages.
   Future<Poem?> getRandomPoem(List<String> activeLanguages) async {
     final query = _db.select(_db.poems)
-      ..where((t) => t.language.isIn(activeLanguages))
       ..orderBy([(t) => OrderingTerm.random()])
       ..limit(1);
 

@@ -113,4 +113,9 @@ app.*.map.json
 
 # Generated l10n files
 lib/l10n/gen/
-assets/database/app.db
+
+# Databases
+assets/database/
+
+# PoeTree corpus files
+.poetree/

@@ -42,9 +42,40 @@ $ flutter run --flavor production --target lib/main_production.dart
 ```
 
 ### 🗄️ Database Setup
-The application requires a pre-populated database asset at `assets/database/app.db`. 
+The application requires pre-populated database assets (e.g., `assets/database/en.db`).
 
-To generate a mock database for development:
+#### Production Database (PoeTree Corpus)
+To generate the database from the real [PoeTree corpus](https://zenodo.org/records/17414036):
+```sh
+$ dart run tool/builder.dart
+```
+
+This will automatically:
+- Download CC-BY-SA 4.0 licensed corpora from Zenodo (~260k poems in cs, de, en, hu, no, pt, ru, sl)
+- Extract and process JSON files
+
+
+**Options**:
+- `--clean-before` - Clean specific files BEFORE processing (poetree, db, zst)
+- `--clean-after` - Clean specific files AFTER processing (poetree, db)
+- `--languages=cs,en,ru` - Download only specified languages (comma-separated)
+
+**Examples**:
+```sh
+# Download only English and Russian corpora
+$ dart run tool/builder.dart --languages=en,ru
+
+# Clean databases before rebuilding
+$ dart run tool/builder.dart --clean-before=db,zst
+
+# Clean up source files after processing
+$ dart run tool/builder.dart --clean-after=poetree
+```
+
+**Note**: Initial download is ~1.6 GB for all corpora. Extracted content uses ~21 GB.
+
+#### Mock Database (Development/Testing)
+For quick testing with sample data:
 ```sh
 $ dart run tool/mock_db_generator.dart
 ```
@@ -69,6 +100,20 @@ $ genhtml coverage/lcov.info -o coverage/
 $ open coverage/index.html
 ```
 
+
+## 📜 Attribution
+
+This application uses poetry data from the **[PoeTree corpus](https://versologie.cz/poetree/)** provided under **CC-BY-SA 4.0** license. The PoeTree project aggregates and standardizes poetry corpora from multiple sources across 11 languages.
+
+If you use this application or its data in your research, please cite the following:
+
+**Dataset:**
+> Plecháč, P., Šeļa, A., Bermúdez Sabel, H., Bobenhausen, K., Cinková, S., Dale, I. L., Delente, É., De Sisto, M., Haider, T., Hammerich, B., Horváth, P., Kvinnsland, R., Kočnik, N., Kolár, R., Korchagin, K., Martynenko, A., Mittmann, A., Nagy, B., Navarro Colorado, B., … Sitchinava, D. (2025). PoeTree. Poetry Corpora in Czech, English, French, German, Hungarian, Italian, Norwegian, Portuguese, Russian, Slovenian, and Spanish (1.0.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.17414036
+
+**Article:**
+> PoeTree: Poetry Treebanks in Czech, English, French, German, Hungarian, Italian, Portuguese, Russian, Slovenian and Spanish. (2025). *Research Data Journal for the Humanities and Social Sciences*, 9, 1-17. https://doi.org/10.1163/24523666-bja10044
+
+---
 
 [license_badge]: https://img.shields.io/badge/license-Apache2.0-blue.svg
 [license_link]: https://opensource.org/license/apache-2-0
