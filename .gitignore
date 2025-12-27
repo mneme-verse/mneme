@@ -116,6 +116,7 @@ lib/l10n/gen/
 
 # Databases
 assets/database/
+!assets/database/.gitkeep
 
 # PoeTree corpus files
 .poetree/
