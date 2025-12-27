@@ -223,12 +223,13 @@ void main() {
       final json = jsonDecode(content) as Map<String, dynamic>;
 
       expect(json.containsKey('license'), isTrue);
+      final licenseParam = json['license'] as Map<String, dynamic>;
       expect(
-        json['license']['text'],
+        licenseParam['text'],
         contains('CC BY-SA 4.0'),
       );
       expect(
-        json['license']['url'],
+        licenseParam['url'],
         'https://creativecommons.org/licenses/by-sa/4.0/',
       );
     });
