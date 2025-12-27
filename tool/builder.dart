@@ -543,6 +543,16 @@ class PoeTreeBuilder {
         .toList();
 
     final manifest = <String, Map<String, dynamic>>{};
+    
+    // PoeTree attribution text
+    const licenseText =
+        'This dataset is derived from the PoeTree corpus (CC BY-SA 4.0). '
+        'See README for full attribution.';
+
+    manifest['license'] = {
+      'text': licenseText,
+      'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
+    };
 
     // Using a fixed version for now as requested
     const poetreeVersion = '1.0';

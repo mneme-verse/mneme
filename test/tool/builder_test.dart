@@ -208,6 +208,31 @@ void main() {
 
       await db.close();
     });
+
+    test('generateManifest creates manifest with license', () async {
+      final builder = PoeTreeBuilder(dbOutputDir: tempDir.path);
+      // Create a dummy .db.zst file so generateManifest calculates hash/size and writes file
+      File(path.join(tempDir.path, 'en.db.zst')).writeAsBytesSync([1, 2, 3]);
+
+      await builder.generateManifest();
+
+      final manifestFile = File(path.join(tempDir.path, 'manifest.json'));
+      expect(manifestFile.existsSync(), isTrue);
+
+      final content = manifestFile.readAsStringSync();
+      final json = jsonDecode(content) as Map<String, dynamic>;
+
+      expect(json.containsKey('license'), isTrue);
+      final licenseParam = json['license'] as Map<String, dynamic>;
+      expect(
+        licenseParam['text'],
+        contains('CC BY-SA 4.0'),
+      );
+      expect(
+        licenseParam['url'],
+        'https://creativecommons.org/licenses/by-sa/4.0/',
+      );
+    });
   });
 }
 
