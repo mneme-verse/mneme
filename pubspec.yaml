@@ -9,13 +9,16 @@ environment:
 
 dependencies:
   bloc: ^9.0.1
+  crypto: ^3.0.7
   drift: ^2.20.3
   drift_flutter: ^0.2.2
+  es_compression: ^2.0.15
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
   flutter_localizations:
     sdk: flutter
+  http: ^1.2.2
   intl: ^0.20.2
   path: ^1.9.1
   path_provider: ^2.1.5
@@ -23,12 +26,15 @@ dependencies:
 
 
 dev_dependencies:
+  archive: ^4.0.7
+  args: ^2.6.0
   bloc_test: ^10.0.0
   build_runner: ^2.4.13
   drift_dev: ^2.20.3
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
+  mockito: ^5.5.0
   mocktail: ^1.0.4
   very_good_analysis: ^10.0.0
 

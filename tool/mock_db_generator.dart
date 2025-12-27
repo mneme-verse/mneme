@@ -5,8 +5,8 @@ import 'package:mneme/db/database.dart';
 import 'package:mneme/db/seed_data.dart';
 
 void main() async {
-// ignore_for_file: avoid_print // CLI tool uses print for progress updates
-  const dbPath = 'assets/database/app.db';
+  // ignore_for_file: avoid_print // CLI tool uses print for progress updates
+  const dbPath = 'assets/database/en.db';
   final file = File(dbPath);
 
   if (file.existsSync()) {
@@ -14,7 +14,7 @@ void main() async {
   }
 
   print('Opening $dbPath via AppDatabase...');
-  
+
   // Use NativeDatabase for pure Dart execution
   final db = AppDatabase(NativeDatabase(file));
 
