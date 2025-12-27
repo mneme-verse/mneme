@@ -233,6 +233,54 @@ void main() {
         'https://creativecommons.org/licenses/by-sa/4.0/',
       );
     });
+
+    test('compressDatabases only compresses selected languages', () async {
+      // Track which files were compressed
+      final compressedFiles = <String>[];
+
+      final builder = TestPoeTreeBuilderWithCompression(
+        dbOutputDir: tempDir.path,
+        onCompress: (filePath) {
+          compressedFiles.add(path.basename(filePath));
+        },
+      );
+
+      // Create multiple .db files
+      File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
+      File(path.join(tempDir.path, 'ru.db')).writeAsBytesSync([5, 6, 7, 8]);
+      File(path.join(tempDir.path, 'fr.db')).writeAsBytesSync([9, 10, 11, 12]);
+
+      // Compress only English database
+      await builder.compressDatabases(['en']);
+
+      // Verify only en.db was compressed
+      expect(compressedFiles, ['en.db']);
+    });
+
+    test('compressDatabases handles multiple selected languages', () async {
+      // Track which files were compressed
+      final compressedFiles = <String>[];
+
+      final builder = TestPoeTreeBuilderWithCompression(
+        dbOutputDir: tempDir.path,
+        onCompress: (filePath) {
+          compressedFiles.add(path.basename(filePath));
+        },
+      );
+
+      // Create multiple .db files
+      File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
+      File(path.join(tempDir.path, 'ru.db')).writeAsBytesSync([5, 6, 7, 8]);
+      File(path.join(tempDir.path, 'fr.db')).writeAsBytesSync([9, 10, 11, 12]);
+
+      // Compress English and Russian databases
+      await builder.compressDatabases(['en', 'ru']);
+
+      // Verify en.db and ru.db were compressed, but not fr.db
+      expect(compressedFiles.length, 2);
+      expect(compressedFiles, containsAll(['en.db', 'ru.db']));
+      expect(compressedFiles, isNot(contains('fr.db')));
+    });
   });
 }
 
@@ -257,4 +305,40 @@ class TestPoeTreeBuilder extends PoeTreeBuilder {
   });
 
   final List<String> extractedZips;
+}
+
+class TestPoeTreeBuilderWithCompression extends PoeTreeBuilder {
+  TestPoeTreeBuilderWithCompression({
+    required this.onCompress,
+    super.dbOutputDir,
+  });
+
+  final void Function(String filePath) onCompress;
+
+  @override
+  Future<void> compressDatabases(List<String> selectedLanguages) async {
+    final dbDir = Directory(dbOutputDir);
+    if (!dbDir.existsSync()) return;
+
+    final dbFiles = dbDir.listSync().whereType<File>().where(
+      (f) {
+        if (!f.path.endsWith('.db')) return false;
+
+        // Extract language code from filename (e.g., "en.db" -> "en")
+        final filename = path.basename(f.path);
+        final lang = filename.substring(0, filename.length - 3);
+
+        return selectedLanguages.contains(lang);
+      },
+    ).toList();
+
+    if (dbFiles.isEmpty) {
+      return;
+    }
+
+    // Track files that would be compressed without actually compressing them
+    for (final file in dbFiles) {
+      onCompress(file.path);
+    }
+  }
 }

@@ -63,7 +63,7 @@ void main(List<String> args) async {
     await builder.buildDatabase(tempDir, selectedLanguages, cleanBefore);
 
     print('\n🗜️  Compressing databases...');
-    await builder.compressDatabases();
+    await builder.compressDatabases(selectedLanguages);
 
     print('\n📜 Generating manifest...');
     await builder.generateManifest();
@@ -503,7 +503,7 @@ class PoeTreeBuilder {
   }
 
   /// Compress all generated .db files to .zst using Isolates
-  Future<void> compressDatabases() async {
+  Future<void> compressDatabases(List<String> selectedLanguages) async {
     final dbDir = Directory(dbOutputDir);
     if (!dbDir.existsSync()) return;
 
@@ -511,9 +511,15 @@ class PoeTreeBuilder {
         .listSync()
         .whereType<File>()
         .where(
-          (f) =>
-              f.path.endsWith('.db') &&
-              !path.basename(f.path).startsWith('poems_'),
+          (f) {
+            if (!f.path.endsWith('.db')) return false;
+            
+            // Extract language code from filename (e.g., "en.db" -> "en")
+            final filename = path.basename(f.path);
+            final lang = filename.substring(0, filename.length - 3);
+            
+            return selectedLanguages.contains(lang);
+          },
         )
         .toList();
 
