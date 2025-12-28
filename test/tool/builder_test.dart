@@ -47,7 +47,7 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!['title'], 'Test Poem');
-      expect(result['author'], '["Test Author"]');
+      expect(result['raw_authors'], ['Test Author']);
       expect(result['body'], 'Line 1\nLine 2');
       expect(result['year'], '2024');
     });
@@ -65,7 +65,7 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!['title'], 'Anon Poem');
-      expect(result['author'], '["[Anonymous]"]');
+      expect(result['raw_authors'], ['[Anonymous]']);
     });
 
     test('handles list of authors', () {
@@ -83,7 +83,7 @@ void main() {
       final result = extractPoemData(json, 'en');
 
       expect(result, isNotNull);
-      expect(result!['author'], '["A1","A2"]');
+      expect(result!['raw_authors'], ['A1', 'A2']);
     });
 
     test('handles missing optional fields', () {

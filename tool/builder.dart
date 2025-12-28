@@ -423,6 +423,18 @@ class PoeTreeBuilder {
           .where((f) => !harvestResult.duplicatePaths.contains(f.path))
           .toList();
 
+      // Author Registry state
+      final authorNameToId = <String, int>{};
+      final authorIdToCount = <int, int>{};
+      var nextAuthorId = 1;
+      var nextPoemId = 1;
+
+      // Batch queues
+      final poemsBatch = <Map<String, dynamic>>[];
+      final poemAuthorsBatch = <Map<String, dynamic>>[];
+      // We don't batch authors incrementally because we update counts.
+      // We insert them all at the end.
+
       // Phase 2: Process files and build database
       // Chunk files into batches for efficient bulk insert
       var langPoems = 0; // Initialize counter for this language
@@ -448,30 +460,97 @@ class PoeTreeBuilder {
           final filePaths = batch.map((f) => f.path).toList();
 
           // Run CPU-intensive parsing in a separate isolate
-          final poems = await runBatchInIsolate(
+          final poemsData = await runBatchInIsolate(
             filePaths,
             langCode,
             altTitlesMap,
           );
 
-          if (poems.isNotEmpty) {
-            await db.batchInsertPoems(poems);
-            langPoems += poems.length;
-            totalPoems += poems.length;
-            print('     ... $totalPoems poems processed');
+          if (poemsData.isNotEmpty) {
+            // Process the batch result on main thread to assign IDs
+            // and manage relations.
+            for (final p in poemsData) {
+              final poemId = nextPoemId++;
+              p['id'] = poemId; // Assign manual ID
+
+              final rawAuthors = p['raw_authors'] as List<String>;
+              // Denormalize author names for FTS (comma separated)
+              p['author_names'] = rawAuthors.join(', ');
+
+              // We remove 'raw_authors' before insert to avoid SQL error?
+              // Only if we pass the map directly. batchInsertPoems extracts
+              // specific fields, so it's fine to keep extra fields in the map.
+
+              for (final authorName in rawAuthors) {
+                var authorId = authorNameToId[authorName];
+                if (authorId == null) {
+                  authorId = nextAuthorId++;
+                  authorNameToId[authorName] = authorId;
+                  authorIdToCount[authorId] = 0;
+                }
+
+                authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
+
+                poemAuthorsBatch.add({
+                  'poem_id': poemId,
+                  'author_id': authorId,
+                });
+              }
+
+              poemsBatch.add(p);
+            }
+
+            // Flush batches if they get too big
+            if (poemsBatch.length >= _dbInsertBatchSize) {
+              await db.batchInsertPoems(poemsBatch);
+              await db.batchInsertPoemAuthors(poemAuthorsBatch);
+
+              langPoems += poemsBatch.length;
+              totalPoems += poemsBatch.length;
+              print('     ... $totalPoems poems processed');
+
+              poemsBatch.clear();
+              poemAuthorsBatch.clear();
+            }
           }
 
-          skippedPoems += batch.length - poems.length;
+          skippedPoems += batch.length - poemsData.length;
         }
       });
 
       await Future.wait(workers);
 
+      // Flush remaining items
+      if (poemsBatch.isNotEmpty) {
+        await db.batchInsertPoems(poemsBatch);
+        await db.batchInsertPoemAuthors(poemAuthorsBatch);
+        langPoems += poemsBatch.length;
+        totalPoems += poemsBatch.length;
+      }
+
+      print('\n  👥 Inserting ${authorNameToId.length} authors...');
+      // Prepare authors for batch insert
+      final authorsList = authorNameToId.entries.map((entry) {
+        return {
+          'id': entry.value,
+          'name': entry.key,
+          'poem_count': authorIdToCount[entry.value] ?? 0,
+        };
+      }).toList();
+
+      // Insert authors in batches
+      for (var i = 0; i < authorsList.length; i += _dbInsertBatchSize) {
+        final end = (i + _dbInsertBatchSize < authorsList.length)
+            ? i + _dbInsertBatchSize
+            : authorsList.length;
+        await db.batchInsertAuthors(authorsList.sublist(i, end));
+      }
+
       // Rebuild FTS
       print('\n  🏗️  Building FTS index...');
       await db.customStatement(
         'INSERT INTO poems_fts (rowid, title, author, body, alt_titles) '
-        'SELECT id, title, author, body, alt_titles FROM poems',
+        'SELECT id, title, author_names, body, alt_titles FROM poems',
       );
 
       // Restore triggers
@@ -507,21 +586,17 @@ class PoeTreeBuilder {
     final dbDir = Directory(dbOutputDir);
     if (!dbDir.existsSync()) return;
 
-    final dbFiles = dbDir
-        .listSync()
-        .whereType<File>()
-        .where(
-          (f) {
-            if (!f.path.endsWith('.db')) return false;
-            
-            // Extract language code from filename (e.g., "en.db" -> "en")
-            final filename = path.basename(f.path);
-            final lang = filename.substring(0, filename.length - 3);
-            
-            return selectedLanguages.contains(lang);
-          },
-        )
-        .toList();
+    final dbFiles = dbDir.listSync().whereType<File>().where(
+      (f) {
+        if (!f.path.endsWith('.db')) return false;
+
+        // Extract language code from filename (e.g., "en.db" -> "en")
+        final filename = path.basename(f.path);
+        final lang = filename.substring(0, filename.length - 3);
+
+        return selectedLanguages.contains(lang);
+      },
+    ).toList();
 
     if (dbFiles.isEmpty) {
       print('No databases found to compress.');
@@ -549,7 +624,7 @@ class PoeTreeBuilder {
         .toList();
 
     final manifest = <String, Map<String, dynamic>>{};
-    
+
     // PoeTree attribution text
     const licenseText =
         'This dataset is derived from the PoeTree corpus (CC BY-SA 4.0). '
@@ -599,6 +674,7 @@ class PoeTreeBuilder {
 }
 
 /// Extract and map PoeTree JSON to Map structure for JSON insert
+/// Extract and map PoeTree JSON to Map structure for JSON insert
 Map<String, dynamic>? extractPoemData(
   Map<String, dynamic> data,
   String langCode, [
@@ -633,7 +709,6 @@ Map<String, dynamic>? extractPoemData(
     }
 
     // Encode authors and alternative titles as JSON
-    final authorJson = json.encode(authors);
     final altTitlesJson = altTitles != null && altTitles.isNotEmpty
         ? json.encode(altTitles)
         : null;
@@ -678,7 +753,7 @@ Map<String, dynamic>? extractPoemData(
 
     return {
       'title': title,
-      'author': authorJson,
+      'raw_authors': authors, // Pass raw list for main thread processing
       'body': body,
       'year': year,
       'alt_titles': altTitlesJson,
