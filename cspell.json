@@ -1,0 +1,66 @@
+{
+  "version": "0.2",
+  "$schema": "https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json",
+  "cache": {
+    "useCache": true,
+    "cacheLocation": ".cspellcache"
+  },
+  "dictionaries": [
+    "vgv_allowed",
+    "vgv_forbidden"
+  ],
+  "dictionaryDefinitions": [
+    {
+      "name": "vgv_allowed",
+      "path": "https://raw.githubusercontent.com/verygoodopensource/very_good_dictionaries/main/allowed.txt",
+      "description": "Allowed VGV Spellings"
+    },
+    {
+      "name": "vgv_forbidden",
+      "path": "https://raw.githubusercontent.com/verygoodopensource/very_good_dictionaries/main/forbidden.txt",
+      "description": "Forbidden VGV Spellings"
+    }
+  ],
+  "ignorePaths": [
+    "**/*.g.dart",
+    "**/*.gen.dart"
+  ],
+  "useGitignore": true,
+  "words": [
+    "Bermúdez",
+    "Bobenhausen",
+    "Bysshe",
+    "Cinková",
+    "Collab",
+    "Delente",
+    "evilmartians",
+    "genhtml",
+    "Haider",
+    "Hammerich",
+    "Horváth",
+    "Insertable",
+    "Kočnik",
+    "Kolár",
+    "Korchagin",
+    "Kvinnsland",
+    "Martynenko",
+    "Mittmann",
+    "mneme",
+    "mocktail",
+    "ONNX",
+    "Petrov",
+    "Plecháč",
+    "PoeTree",
+    "rominf",
+    "Sabel",
+    "Šeļa",
+    "Silentium",
+    "Sitchinava",
+    "Sisto",
+    "Treebanks",
+    "Zenodo",
+    "zstd",
+    "Zstandard",
+    "ZSTD"
+  ]
+}

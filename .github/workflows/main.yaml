@@ -26,4 +26,7 @@ jobs:
     with:
       includes: |
         **/*.md
+        **/*.dart
+        **/*.yaml
+        **/*.yml
       modified_files_only: false

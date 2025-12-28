@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    check-format:
+      run: dart format --output=none --set-exit-if-changed .
+    analyze:
+      run: flutter analyze
+    test:
+      run: very_good test -j $(nproc) --optimization --coverage --test-randomize-ordering-seed random
+    spell-check:
+      glob: "*.{md,dart,yaml,yml}"
+      run: npx cspell {staged_files}
