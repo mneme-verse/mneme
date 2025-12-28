@@ -197,14 +197,114 @@ void main() {
       final dbFile = File(path.join(tempDir.path, 'en.db'));
       expect(dbFile.existsSync(), isTrue);
 
-      // Verify DB content (basic check)
+      // Verify DB content
       final db = AppDatabase(NativeDatabase(dbFile));
+
+      // Verify Poems
       final count = await db.poems.count().getSingle();
       expect(count, 1);
 
       final poem = await db.poems.select().getSingle();
       expect(poem.title, 'Test Poem');
       expect(poem.body, 'Line 1');
+      expect(poem.authorNames, 'Author'); // Check denormalized name
+
+      // Verify Authors
+      final authors = await db.authors.select().get();
+      expect(authors.length, 1);
+      expect(authors.first.name, 'Author');
+      expect(authors.first.poemCount, 1);
+
+      // Verify PoemAuthors
+      final poemAuthors = await db.poemAuthors.select().get();
+      expect(poemAuthors.length, 1);
+      expect(poemAuthors.first.poemId, poem.id);
+      expect(poemAuthors.first.authorId, authors.first.id);
+
+      await db.close();
+    });
+
+    test('builds database correctly handling multiple authors', () async {
+      // Setup
+      final builder = PoeTreeBuilder(dbOutputDir: tempDir.path);
+      const lang = 'en';
+      final langDir = Directory(path.join(tempDir.path, lang))..createSync();
+
+      // Poem 1: Two authors
+      File(path.join(langDir.path, 'poem1.json')).writeAsStringSync(
+        jsonEncode({
+          'id': 1,
+          'title': 'Collaborative Poem',
+          'author': [
+            {'name': 'Author One'},
+            {'name': 'Author Two'},
+          ],
+          'body': [
+            {'text': 'Body'},
+          ],
+          'year_created': 2024,
+        }),
+      );
+
+      // Poem 2: One of the authors from Poem 1
+      File(path.join(langDir.path, 'poem2.json')).writeAsStringSync(
+        jsonEncode({
+          'id': 2,
+          'title': 'Solo Poem',
+          'author': {'name': 'Author One'},
+          'body': [
+            {'text': 'Body'},
+          ],
+          'year_created': 2025,
+        }),
+      );
+
+      // Execute
+      await builder.buildDatabase(tempDir, [lang], {});
+
+      final db = AppDatabase(
+        NativeDatabase(File(path.join(tempDir.path, 'en.db'))),
+      );
+
+      // Verify Authors
+      final authors = await db.authors.select().get();
+      expect(authors.length, 2);
+
+      final authorOne = authors.firstWhere((a) => a.name == 'Author One');
+      final authorTwo = authors.firstWhere((a) => a.name == 'Author Two');
+
+      expect(authorOne.poemCount, 2);
+      expect(authorTwo.poemCount, 1);
+
+      // Verify Poems
+      final poem1 =
+          await (db.poems.select()
+                ..where((t) => t.title.equals('Collaborative Poem')))
+              .getSingle();
+      expect(poem1.authorNames, 'Author One, Author Two');
+
+      final poem2 =
+          await (db.poems.select()..where((t) => t.title.equals('Solo Poem')))
+              .getSingle();
+      expect(poem2.authorNames, 'Author One');
+
+      // Verify Junction Table
+      final links1 =
+          await (db.poemAuthors.select()
+                ..where((t) => t.poemId.equals(poem1.id)))
+              .get();
+      expect(links1.length, 2);
+      expect(
+        links1.map((l) => l.authorId),
+        containsAll([authorOne.id, authorTwo.id]),
+      );
+
+      final links2 =
+          await (db.poemAuthors.select()
+                ..where((t) => t.poemId.equals(poem2.id)))
+              .get();
+      expect(links2.length, 1);
+      expect(links2.first.authorId, authorOne.id);
 
       await db.close();
     });
