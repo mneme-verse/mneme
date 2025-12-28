@@ -3,5 +3,26 @@
     "appTitle": "Mneme MVP",
     "@appTitle": {
         "description": "Text shown in the AppBar of the App"
+    },
+    "selectLanguage": "Select Language",
+    "@selectLanguage": {
+        "description": "Title on the Onboarding screen"
+    },
+    "authors": "Authors",
+    "@authors": {
+        "description": "Title of the Home screen"
+    },
+    "noAuthorsFound": "No authors found",
+    "@noAuthorsFound": {
+        "description": "Text shown when the author list is empty"
+    },
+    "poemsCount": "{count} poems",
+    "@poemsCount": {
+        "description": "Subtitle showing number of poems",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
     }
 }
