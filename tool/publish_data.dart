@@ -1,3 +1,4 @@
+// CLI tool uses print for output.
 // ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
@@ -35,7 +36,7 @@ void main(List<String> args) async {
     stderr.writeln('Error: ${e.message}');
     _printHelp(parser);
     exit(1);
-  } catch (e) {
+  } on Object catch (e) {
     stderr.writeln('Unexpected error: $e');
     exit(1);
   }

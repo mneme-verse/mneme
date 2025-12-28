@@ -120,3 +120,6 @@ assets/database/
 
 # PoeTree corpus files
 .poetree/
+
+# cspell
+.cspellcache

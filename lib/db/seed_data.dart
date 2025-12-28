@@ -1,3 +1,5 @@
+// cspell:disable
+
 import 'package:mneme/db/database.dart';
 
 Future<void> seedDatabase(AppDatabase db, {String? language}) async {
