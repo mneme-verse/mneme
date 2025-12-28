@@ -4,7 +4,7 @@ import 'package:mneme/db/tables.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [Poems, Metadata])
+@DriftDatabase(tables: [Poems, Authors, PoemAuthors, Metadata])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
@@ -34,22 +34,22 @@ class AppDatabase extends _$AppDatabase {
     // Trigger for INSERT operations
     await customStatement('''
       CREATE TRIGGER poems_ai AFTER INSERT ON poems BEGIN
-        INSERT INTO poems_fts (rowid, title, author, body, alt_titles) VALUES (new.id, new.title, new.author, new.body, new.alt_titles);
+        INSERT INTO poems_fts (rowid, title, author, body, alt_titles) VALUES (new.id, new.title, new.author_names, new.body, new.alt_titles);
       END;
     ''');
 
     // Trigger for DELETE operations
     await customStatement('''
       CREATE TRIGGER poems_ad AFTER DELETE ON poems BEGIN
-        INSERT INTO poems_fts (poems_fts, rowid, title, author, body, alt_titles) VALUES ('delete', old.id, old.title, old.author, old.body, old.alt_titles);
+        INSERT INTO poems_fts (poems_fts, rowid, title, author, body, alt_titles) VALUES ('delete', old.id, old.title, old.author_names, old.body, old.alt_titles);
       END;
     ''');
 
     // Trigger for UPDATE operations
     await customStatement('''
       CREATE TRIGGER poems_au AFTER UPDATE ON poems BEGIN
-        INSERT INTO poems_fts (poems_fts, rowid, title, author, body, alt_titles) VALUES ('delete', old.id, old.title, old.author, old.body, old.alt_titles);
-        INSERT INTO poems_fts (rowid, title, author, body, alt_titles) VALUES (new.id, new.title, new.author, new.body, new.alt_titles);
+        INSERT INTO poems_fts (poems_fts, rowid, title, author, body, alt_titles) VALUES ('delete', old.id, old.title, old.author_names, old.body, old.alt_titles);
+        INSERT INTO poems_fts (rowid, title, author, body, alt_titles) VALUES (new.id, new.title, new.author_names, new.body, new.alt_titles);
       END;
     ''');
   }
@@ -62,13 +62,53 @@ class AppDatabase extends _$AppDatabase {
 
     await customStatement(
       r'''
-      INSERT INTO poems (title, author, body, year, alt_titles)
+      INSERT INTO poems (id, title, author_names, body, year, alt_titles)
       SELECT
+        json_extract(value, '$.id'),
         json_extract(value, '$.title'),
-        json_extract(value, '$.author'),
+        json_extract(value, '$.author_names'),
         json_extract(value, '$.body'),
         json_extract(value, '$.year'),
         json_extract(value, '$.alt_titles')
+      FROM json_each(?)
+      ''',
+      [jsonString],
+    );
+  }
+
+  /// Bulk insert authors using JSON
+  Future<void> batchInsertAuthors(List<Map<String, dynamic>> authors) async {
+    if (authors.isEmpty) return;
+
+    final jsonString = json.encode(authors);
+
+    await customStatement(
+      r'''
+      INSERT INTO authors (id, name, poem_count)
+      SELECT
+        json_extract(value, '$.id'),
+        json_extract(value, '$.name'),
+        json_extract(value, '$.poem_count')
+      FROM json_each(?)
+      ''',
+      [jsonString],
+    );
+  }
+
+  /// Bulk insert poem-author relations
+  Future<void> batchInsertPoemAuthors(
+    List<Map<String, dynamic>> relations,
+  ) async {
+    if (relations.isEmpty) return;
+
+    final jsonString = json.encode(relations);
+
+    await customStatement(
+      r'''
+      INSERT INTO poem_authors (poem_id, author_id)
+      SELECT
+        json_extract(value, '$.poem_id'),
+        json_extract(value, '$.author_id')
       FROM json_each(?)
       ''',
       [jsonString],
