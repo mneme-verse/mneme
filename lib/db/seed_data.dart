@@ -12,6 +12,12 @@ Future<void> seedDatabase(AppDatabase db, {String? language}) async {
         'year': '1845',
       },
       {
+        'title': 'Annabel Lee',
+        'author_names': 'Edgar Allan Poe',
+        'body': 'It was many and many a year ago...',
+        'year': '1849',
+      },
+      {
         'title': 'Ozymandias',
         'author_names': 'Percy Bysshe Shelley',
         'body': 'I met a traveller from an antique land...',
@@ -47,4 +53,43 @@ Future<void> seedDatabase(AppDatabase db, {String? language}) async {
       : [...allPoems['en']!, ...allPoems['ru']!];
 
   await db.batchInsertPoems(poems);
+
+  // Extract and insert authors for testing
+  // Note: ID assignment is simplified here for tests
+  final authorsMap = <String, int>{}; // name -> author ID
+  final authorsList = <Map<String, dynamic>>[];
+  final poemAuthorsList = <Map<String, dynamic>>[];
+  var authorIdCounter = 1;
+  var poemIdCounter = 1;
+
+  for (final poem in poems) {
+    final authorName = poem['author_names']!;
+    int authorId;
+
+    if (!authorsMap.containsKey(authorName)) {
+      authorId = authorIdCounter++;
+      authorsMap[authorName] = authorId;
+      authorsList.add({
+        'id': authorId,
+        'name': authorName,
+        'poem_count': 1,
+      });
+    } else {
+      authorId = authorsMap[authorName]!;
+      // Find and update poem count
+      final authorEntry = authorsList.firstWhere((a) => a['id'] == authorId);
+      authorEntry['poem_count'] = (authorEntry['poem_count'] as int) + 1;
+    }
+
+    // Create PoemAuthor relationship
+    poemAuthorsList.add({
+      'poem_id': poemIdCounter,
+      'author_id': authorId,
+    });
+
+    poemIdCounter++;
+  }
+
+  await db.batchInsertAuthors(authorsList);
+  await db.batchInsertPoemAuthors(poemAuthorsList);
 }

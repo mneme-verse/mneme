@@ -69,4 +69,22 @@ class PoetryRepository {
 
     return query.getSingleOrNull();
   }
+
+  /// Get list of authors sorted by poem count (descending).
+  Future<List<Author>> getAuthors({int limit = 20, int offset = 0}) {
+    return (_db.select(_db.authors)
+          ..orderBy([
+            (t) =>
+                OrderingTerm(expression: t.poemCount, mode: OrderingMode.desc),
+          ])
+          ..limit(limit, offset: offset))
+        .get();
+  }
+
+  /// Get metadata value by key.
+  Future<String?> getMetadata(String key) async {
+    final query = _db.select(_db.metadata)..where((t) => t.key.equals(key));
+    final result = await query.getSingleOrNull();
+    return result?.value;
+  }
 }
