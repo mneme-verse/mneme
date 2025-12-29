@@ -488,6 +488,7 @@ class PoeTreeBuilder {
               // Only if we pass the map directly. batchInsertPoems extracts
               // specific fields, so it's fine to keep extra fields in the map.
 
+              final addedAuthors = <int>{};
               for (final authorName in rawAuthors) {
                 var authorId = authorNameToId[authorName];
                 if (authorId == null) {
@@ -496,12 +497,14 @@ class PoeTreeBuilder {
                   authorIdToCount[authorId] = 0;
                 }
 
-                authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
+                if (addedAuthors.add(authorId)) {
+                  authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
 
-                poemAuthorsBatch.add({
-                  'poem_id': poemId,
-                  'author_id': authorId,
-                });
+                  poemAuthorsBatch.add({
+                    'poem_id': poemId,
+                    'author_id': authorId,
+                  });
+                }
               }
 
               poemsBatch.add(p);
@@ -920,8 +923,7 @@ Future<void> compressFile(String filePath) async {
   final output = File('$filePath.zst');
 
   final bytes = await input.readAsBytes();
-  // Use ZstdCodec for compression with max level
-  final codec = ZstdCodec(level: 22);
-  final compressed = codec.encode(bytes);
+  // Use ZstdCodec from es_compression with level 22
+  final compressed = ZstdCodec(level: 22).encode(bytes);
   await output.writeAsBytes(compressed);
 }
