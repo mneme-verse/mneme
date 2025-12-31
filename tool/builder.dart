@@ -604,7 +604,7 @@ class PoeTreeBuilder {
         if (!selectedLanguages.contains(lang)) return false;
 
         // Check if .zst file already exists
-        final zstFile = File('${f.path}.zst');
+        final zstFile = File(path.setExtension(f.path, '.db.zst'));
         if (zstFile.existsSync()) {
           print('     ⏭️  Skipping $lang compression (already compressed)');
           return false;
