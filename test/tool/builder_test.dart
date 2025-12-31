@@ -404,6 +404,12 @@ void main() {
 
       // Verify no compression happened
       expect(compressedFiles, isEmpty);
+
+      // Verify .db file is unchanged
+      final dbContent = File(
+        path.join(tempDir.path, 'en.db'),
+      ).readAsBytesSync();
+      expect(dbContent, [1, 2, 3, 4]);
     });
   });
 }
