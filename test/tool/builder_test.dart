@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' as drift;
 import 'package:drift/native.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mneme/db/database.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:path/path.dart' as path;
+import 'package:test/test.dart';
 
 // Import the builder tool file.
 // Note: Since it's in tool/, we import it via relative path.
@@ -338,9 +338,9 @@ void main() {
       // Track which files were compressed
       final compressedFiles = <String>[];
 
-      final builder = TestPoeTreeBuilderWithCompression(
+      final builder = PoeTreeBuilder(
         dbOutputDir: tempDir.path,
-        onCompress: (filePath) {
+        compressor: (filePath) async {
           compressedFiles.add(path.basename(filePath));
         },
       );
@@ -361,9 +361,9 @@ void main() {
       // Track which files were compressed
       final compressedFiles = <String>[];
 
-      final builder = TestPoeTreeBuilderWithCompression(
+      final builder = PoeTreeBuilder(
         dbOutputDir: tempDir.path,
-        onCompress: (filePath) {
+        compressor: (filePath) async {
           compressedFiles.add(path.basename(filePath));
         },
       );
@@ -380,6 +380,63 @@ void main() {
       expect(compressedFiles.length, 2);
       expect(compressedFiles, containsAll(['en.db', 'ru.db']));
       expect(compressedFiles, isNot(contains('fr.db')));
+    });
+
+    test('compressDatabases skips if .zst exists', () async {
+      // Track which files were compressed
+      final compressedFiles = <String>[];
+
+      final builder = PoeTreeBuilder(
+        dbOutputDir: tempDir.path,
+        compressor: (filePath) async {
+          compressedFiles.add(path.basename(filePath));
+        },
+      );
+
+      // Create .db and .db.zst files
+      File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
+      File(
+        path.join(tempDir.path, 'en.db.zst'),
+      ).writeAsBytesSync([5, 6, 7, 8]);
+
+      // Attempt compression
+      await builder.compressDatabases(['en']);
+
+      // Verify no compression happened
+      expect(compressedFiles, isEmpty);
+
+      // Verify .db file is unchanged
+      final dbContent = File(
+        path.join(tempDir.path, 'en.db'),
+      ).readAsBytesSync();
+      expect(dbContent, [1, 2, 3, 4]);
+    });
+
+    test('compressDatabases runs if .zst does not exist', () async {
+      // Track which files were compressed
+      final compressedFiles = <String>[];
+
+      final builder = PoeTreeBuilder(
+        dbOutputDir: tempDir.path,
+        compressor: (filePath) async {
+          compressedFiles.add(path.basename(filePath));
+        },
+      );
+
+      // Create .db file only
+      File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
+
+      // Ensure .zst does not exist
+      final zstFile = File(path.join(tempDir.path, 'en.db.zst'));
+      if (zstFile.existsSync()) {
+        zstFile.deleteSync();
+      }
+
+      // Attempt compression
+      await builder.compressDatabases(['en']);
+
+      // Verify compression happened
+      expect(compressedFiles, ['en.db']);
     });
   });
 }
@@ -405,40 +462,4 @@ class TestPoeTreeBuilder extends PoeTreeBuilder {
   });
 
   final List<String> extractedZips;
-}
-
-class TestPoeTreeBuilderWithCompression extends PoeTreeBuilder {
-  TestPoeTreeBuilderWithCompression({
-    required this.onCompress,
-    super.dbOutputDir,
-  });
-
-  final void Function(String filePath) onCompress;
-
-  @override
-  Future<void> compressDatabases(List<String> selectedLanguages) async {
-    final dbDir = Directory(dbOutputDir);
-    if (!dbDir.existsSync()) return;
-
-    final dbFiles = dbDir.listSync().whereType<File>().where(
-      (f) {
-        if (!f.path.endsWith('.db')) return false;
-
-        // Extract language code from filename (e.g., "en.db" -> "en")
-        final filename = path.basename(f.path);
-        final lang = filename.substring(0, filename.length - 3);
-
-        return selectedLanguages.contains(lang);
-      },
-    ).toList();
-
-    if (dbFiles.isEmpty) {
-      return;
-    }
-
-    // Track files that would be compressed without actually compressing them
-    for (final file in dbFiles) {
-      onCompress(file.path);
-    }
-  }
 }
