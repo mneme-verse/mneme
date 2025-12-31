@@ -411,6 +411,33 @@ void main() {
       ).readAsBytesSync();
       expect(dbContent, [1, 2, 3, 4]);
     });
+
+    test('compressDatabases runs if .zst does not exist', () async {
+      // Track which files were compressed
+      final compressedFiles = <String>[];
+
+      final builder = PoeTreeBuilder(
+        dbOutputDir: tempDir.path,
+        compressor: (filePath) async {
+          compressedFiles.add(path.basename(filePath));
+        },
+      );
+
+      // Create .db file only
+      File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
+
+      // Ensure .zst does not exist
+      final zstFile = File(path.join(tempDir.path, 'en.db.zst'));
+      if (zstFile.existsSync()) {
+        zstFile.deleteSync();
+      }
+
+      // Attempt compression
+      await builder.compressDatabases(['en']);
+
+      // Verify compression happened
+      expect(compressedFiles, ['en.db']);
+    });
   });
 }
 
