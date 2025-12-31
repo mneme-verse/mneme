@@ -166,12 +166,19 @@ class PoeTreeBuilder {
     http.Client? client,
     this.dbOutputDir = 'assets/database',
     Future<void> Function(String, String)? zipExtractor,
+    Future<void> Function(String)? compressor,
   }) : client = client ?? http.Client(),
-       zipExtractor = zipExtractor ?? extractFileToDisk;
+       zipExtractor = zipExtractor ?? extractFileToDisk,
+       compressor = compressor ?? _defaultCompressor;
 
   final http.Client client;
   final String dbOutputDir;
   final Future<void> Function(String, String) zipExtractor;
+  final Future<void> Function(String) compressor;
+
+  static Future<void> _defaultCompressor(String path) {
+    return Isolate.run(() => compressFile(path));
+  }
 
   /// Clean existing database and temp files based on specified targets
   Future<void> cleanFiles(
@@ -594,7 +601,16 @@ class PoeTreeBuilder {
         final filename = path.basename(f.path);
         final lang = filename.substring(0, filename.length - 3);
 
-        return selectedLanguages.contains(lang);
+        if (!selectedLanguages.contains(lang)) return false;
+
+        // Check if .zst file already exists
+        final zstFile = File('${f.path}.zst');
+        if (zstFile.existsSync()) {
+          print('     ⏭️  Skipping $lang compression (already compressed)');
+          return false;
+        }
+
+        return true;
       },
     ).toList();
 
@@ -608,7 +624,7 @@ class PoeTreeBuilder {
     // Note: We don't delete during compression
     // Deletion happens in _cleanFilesAfter if --clean-after=db is specified
     await Future.wait(
-      dbFiles.map((file) => Isolate.run(() => compressFile(file.path))),
+      dbFiles.map((file) => compressor(file.path)),
     );
   }
 
