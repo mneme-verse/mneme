@@ -191,4 +191,38 @@ void main() {
       },
     );
   });
+
+  group('HomePage initialization', () {
+    late PoetryRepository poetryRepository;
+
+    setUp(() {
+      poetryRepository = MockPoetryRepository();
+    });
+
+    testWidgets('route returns a MaterialPageRoute', (tester) async {
+      expect(HomePage.route(), isA<MaterialPageRoute<void>>());
+    });
+
+    testWidgets('renders HomeView', (tester) async {
+      when(
+        () => poetryRepository.getAuthors(
+          limit: any(named: 'limit'),
+          offset: any(named: 'offset'),
+        ),
+      ).thenAnswer((_) async => []);
+
+      await tester.pumpWidget(
+        RepositoryProvider.value(
+          value: poetryRepository,
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: HomePage(),
+          ),
+        ),
+      );
+
+      expect(find.byType(HomeView), findsOneWidget);
+    });
+  });
 }
