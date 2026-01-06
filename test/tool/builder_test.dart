@@ -322,8 +322,14 @@ void main() {
       final content = manifestFile.readAsStringSync();
       final json = jsonDecode(content) as Map<String, dynamic>;
 
-      expect(json.containsKey('license'), isTrue);
-      final licenseParam = json['license'] as Map<String, dynamic>;
+      expect(json.containsKey('license'), isFalse);
+      // Check for language entry and name
+      expect(json.containsKey('en'), isTrue);
+      final enEntry = json['en'] as Map<String, dynamic>;
+      expect(enEntry['name'], 'English');
+
+      expect(enEntry.containsKey('license'), isTrue);
+      final licenseParam = enEntry['license'] as Map<String, dynamic>;
       expect(
         licenseParam['text'],
         contains('CC BY-SA 4.0'),

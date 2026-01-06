@@ -17,6 +17,17 @@ const _availableCorpora = ['cs', 'de', 'en', 'hu', 'no', 'pt', 'ru', 'sl'];
 const _filesPerHarvestIsolate = 500;
 const _dbInsertBatchSize = 2500;
 
+const _languageNames = {
+  'cs': 'Čeština',
+  'de': 'Deutsch',
+  'en': 'English',
+  'hu': 'Magyar',
+  'no': 'Norsk',
+  'pt': 'Português',
+  'ru': 'Русский',
+  'sl': 'Slovenščina',
+};
+
 /// PoeTree corpus ETL script that downloads and converts PoeTree JSON files
 /// to SQLite database.
 void main(List<String> args) async {
@@ -646,7 +657,7 @@ class PoeTreeBuilder {
         'This dataset is derived from the PoeTree corpus (CC BY-SA 4.0). '
         'See README for full attribution.';
 
-    manifest['license'] = {
+    const licenseObj = {
       'text': licenseText,
       'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
     };
@@ -667,9 +678,11 @@ class PoeTreeBuilder {
 
       manifest[lang] = {
         'file': filename,
+        'name': _languageNames[lang] ?? lang,
         'size': size,
         'hash': hash,
         'version': versionObj,
+        'license': licenseObj,
       };
     }
 
