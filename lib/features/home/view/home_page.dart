@@ -5,10 +5,18 @@ import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.onSettingsPressed,
+  });
 
-  static Route<void> route() {
-    return MaterialPageRoute<void>(builder: (_) => const HomePage());
+  /// Callback when the settings button is pressed.
+  final VoidCallback? onSettingsPressed;
+
+  static Route<void> route({VoidCallback? onSettingsPressed}) {
+    return MaterialPageRoute<void>(
+      builder: (_) => HomePage(onSettingsPressed: onSettingsPressed),
+    );
   }
 
   @override
@@ -18,7 +26,7 @@ class HomePage extends StatelessWidget {
         context.read<PoetryRepository>(),
         // ignore: discarded_futures -- fire and forget
       )..fetchAuthors(),
-      child: const HomeView(),
+      child: HomeView(onSettingsPressed: onSettingsPressed),
     );
   }
 }
@@ -27,10 +35,14 @@ class HomeView extends StatefulWidget {
   const HomeView({
     super.key,
     this.scrollController,
+    this.onSettingsPressed,
   });
 
   /// Optional scroll controller for testing purposes.
   final ScrollController? scrollController;
+
+  /// Callback when the settings button is pressed.
+  final VoidCallback? onSettingsPressed;
 
   @override
   State<HomeView> createState() => _HomeViewState();
@@ -83,7 +95,7 @@ class _HomeViewState extends State<HomeView> {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              // TODO(rominf): Issue #5 - Navigate to Settings
+              widget.onSettingsPressed?.call();
             },
           ),
         ],

@@ -92,11 +92,31 @@ void main() {
 
     testWidgets('taps settings button', (tester) async {
       final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
-      when(() => homeCubit.state).thenReturn(HomeLoaded(authors));
-      await tester.pumpWidget(buildSubject());
+      when(
+        () => homeCubit.state,
+      ).thenReturn(HomeLoaded(authors, hasReachedMax: true));
+
+      var settingsPressed = false;
+      await tester.pumpWidget(
+        RepositoryProvider.value(
+          value: poetryRepository,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: BlocProvider.value(
+              value: homeCubit,
+              child: HomeView(
+                onSettingsPressed: () => settingsPressed = true,
+              ),
+            ),
+          ),
+        ),
+      );
 
       await tester.tap(find.widgetWithIcon(IconButton, Icons.settings));
-      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(settingsPressed, isTrue);
     });
 
     testWidgets('taps author item', (tester) async {
@@ -190,5 +210,39 @@ void main() {
         verifyNever(() => homeCubit.fetchAuthors(offset: 5));
       },
     );
+  });
+
+  group('HomePage initialization', () {
+    late PoetryRepository poetryRepository;
+
+    setUp(() {
+      poetryRepository = MockPoetryRepository();
+    });
+
+    testWidgets('route returns a MaterialPageRoute', (tester) async {
+      expect(HomePage.route(), isA<MaterialPageRoute<void>>());
+    });
+
+    testWidgets('renders HomeView', (tester) async {
+      when(
+        () => poetryRepository.getAuthors(
+          limit: any(named: 'limit'),
+          offset: any(named: 'offset'),
+        ),
+      ).thenAnswer((_) async => []);
+
+      await tester.pumpWidget(
+        RepositoryProvider.value(
+          value: poetryRepository,
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: HomePage(),
+          ),
+        ),
+      );
+
+      expect(find.byType(HomeView), findsOneWidget);
+    });
   });
 }
