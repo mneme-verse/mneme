@@ -105,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
 
     await customStatement(
       r'''
-      INSERT INTO poem_authors (poem_id, author_id)
+      INSERT OR IGNORE INTO poem_authors (poem_id, author_id)
       SELECT
         json_extract(value, '$.poem_id'),
         json_extract(value, '$.author_id')

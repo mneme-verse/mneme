@@ -38,4 +38,4 @@ Compressed database artifacts (`*.db.zst`) are published as release assets (for 
     - Used for decompressing databases on Linux to avoid issues with system shared libraries required by `zstandard`.
 - **Tooling (ETL/CLI)**: `es_compression` package.
   - Used in `tool/builder.dart` for compressing databases during generation.
-  - **Reason**: The `zstandard` package (and its CLI wrapper) relies on system shared libraries which caused unresolved dependency errors in the Linux dev environment. `es_compression` (and its `eszstd` tool) provides a compatible implementation that works reliably in both the CLI environment for compression tasks and the Linux runtime for decompression.
+  - **Reason**: The `zstandard` package (and its CLI wrapper) relies on system shared libraries which caused unresolved dependency errors in the Linux dev environment. `es_compression` provides a compatible implementation that works reliably in the CLI environment for compression tasks.
