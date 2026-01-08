@@ -217,6 +217,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.4.1"
+  dio:
+    dependency: "direct main"
+    description:
+      name: dio
+      sha256: d90ee57923d1828ac14e492ca49440f65477f4bb1263575900be731a3dac66a9
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.9.0"
+  dio_web_adapter:
+    dependency: transitive
+    description:
+      name: dio_web_adapter
+      sha256: "7586e476d70caecaf1686d21eee7247ea43ef5c345eab9e0cc3583ff13378d78"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
   drift:
     dependency: "direct main"
     description:
@@ -241,6 +257,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.8"
+  equatable:
+    dependency: "direct main"
+    description:
+      name: equatable
+      sha256: "567c64b3cb4cf82397aac55f4f0cbd3ca20d77c6c03bedbc4ceaddc08904aef7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.7"
   es_compression:
     dependency: "direct main"
     description:
@@ -550,7 +574,7 @@ packages:
     source: hosted
     version: "2.2.1"
   path_provider_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: path_provider_platform_interface
       sha256: "88f5779f72ba699763fa3a3b06aa4bf6de76c8e5de842cf6f29e2e06476c2334"
@@ -582,7 +606,7 @@ packages:
     source: hosted
     version: "3.1.6"
   plugin_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: plugin_platform_interface
       sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
@@ -946,6 +970,70 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.3"
+  zstandard:
+    dependency: "direct main"
+    description:
+      name: zstandard
+      sha256: d2cae71d34dfdd014525259be2f84ebc2a738c94cc4232515df44a1415dde9d3
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_android:
+    dependency: transitive
+    description:
+      name: zstandard_android
+      sha256: "7d85d814f147faa7a33d5cd5b5610dea451a57f95b34f98c93723bb2f2efbf98"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_ios:
+    dependency: transitive
+    description:
+      name: zstandard_ios
+      sha256: "50e6b3d05ad6ecf8def65c9fae46d4b786edd89150fd2bb207cdcef918946f0d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_linux:
+    dependency: transitive
+    description:
+      name: zstandard_linux
+      sha256: "66a61f7839016671a18448b73dab1910f7390bd9ab15bc118c8591381103f5b2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_macos:
+    dependency: transitive
+    description:
+      name: zstandard_macos
+      sha256: f4e02dc613f9d0c960edad8a330b41c4e0f0a548aea26668a12f45eebacd6aa1
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_platform_interface:
+    dependency: transitive
+    description:
+      name: zstandard_platform_interface
+      sha256: "0261e2ce3520eace49e5d1e766e69a8c2613d24f0805c94e08544a139ad20e48"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_web:
+    dependency: transitive
+    description:
+      name: zstandard_web
+      sha256: ed0d385dab253fefbe7c42e4eb7b58d3f2425713420402cc3f3b281d5a49e8a7
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
+  zstandard_windows:
+    dependency: transitive
+    description:
+      name: zstandard_windows
+      sha256: "86bbd10b9d563dd22eedd4df94904078ac443d8f941b79a72c4fda534da76461"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.29"
 sdks:
   dart: ">=3.9.0 <4.0.0"
   flutter: ">=3.35.0 <4.0.0"
