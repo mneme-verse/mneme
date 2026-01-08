@@ -26,7 +26,7 @@ Although **XZ** provided slightly better compression (saving ~7 MiB total or ~0.
 3.  **Modern Standard**: ZSTD is becoming the industry standard for high-performance compression.
 
 ## Implementation options
-Compressed database artifacts (`*.db.zst`) are published as release assets (for example, on GitHub Releases) and downloaded by the application at runtime. The app must decompress these downloaded files before use. For environments where downloading is not possible or as a fallback, uncompressed SQLite databases are bundled under `assets/database/*.db`, which `openConnection` can load directly if no downloaded database is available.
+Compressed database artifacts (`*.db.zst`) are published as release assets (for example, on GitHub Releases) and downloaded by the application at runtime. The app must decompress these downloaded files before use. Currently, the application initialization flow requires a successful download and decompression before proceeding; any bundled assets (`assets/database/*.db`) are intended for use in tests or as a base, but are not used as an automatic fallback in the current release flow.
 
 ## Library selection
 

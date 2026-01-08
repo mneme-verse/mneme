@@ -108,18 +108,29 @@ endforeach(bundled_library)
 
 # Install bundled eszstd library for Linux
 # Dynamically find the path to es_compression package from .dart_tool/package_config.json
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../.dart_tool/package_config.json" PACKAGE_CONFIG_JSON)
-string(REGEX MATCH "\"name\": \"es_compression\",[ \n\r\t]*\"rootUri\": \"([^\"]+)\"" ES_COMP_MATCH "${PACKAGE_CONFIG_JSON}")
-set(ES_COMP_URI "${CMAKE_MATCH_1}")
-if(ES_COMP_URI MATCHES "^file://")
-  string(SUBSTRING "${ES_COMP_URI}" 7 -1 ES_COMP_PATH)
-  # Handle potential leading slash on Linux paths
-  if(NOT EXISTS "${ES_COMP_PATH}" AND EXISTS "/${ES_COMP_PATH}")
-    set(ES_COMP_PATH "/${ES_COMP_PATH}")
+set(PACKAGE_CONFIG_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../.dart_tool/package_config.json")
+if(EXISTS "${PACKAGE_CONFIG_PATH}")
+  file(READ "${PACKAGE_CONFIG_PATH}" PACKAGE_CONFIG_JSON)
+  string(REGEX MATCH "\"name\": \"es_compression\",[ \n\r\t]*\"rootUri\": \"([^\"]+)\"" ES_COMP_MATCH "${PACKAGE_CONFIG_JSON}")
+  if(ES_COMP_MATCH)
+    set(ES_COMP_URI "${CMAKE_MATCH_1}")
+    if(ES_COMP_URI MATCHES "^file://")
+      string(SUBSTRING "${ES_COMP_URI}" 7 -1 ES_COMP_PATH)
+      # Handle potential leading slash on Linux paths
+      if(NOT EXISTS "${ES_COMP_PATH}" AND EXISTS "/${ES_COMP_PATH}")
+        set(ES_COMP_PATH "/${ES_COMP_PATH}")
+      endif()
+      install(FILES "${ES_COMP_PATH}/lib/src/zstd/blobs/eszstd-linux64.so"
+        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+        COMPONENT Runtime)
+    else()
+      message(WARNING "es_compression rootUri '${ES_COMP_URI}' is not a file:// URI; skipping eszstd-linux64.so install.")
+    endif()
+  else()
+    message(WARNING "Could not locate es_compression rootUri in ${PACKAGE_CONFIG_PATH}; skipping eszstd-linux64.so install.")
   endif()
-  install(FILES "${ES_COMP_PATH}/lib/src/zstd/blobs/eszstd-linux64.so"
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    COMPONENT Runtime)
+else()
+  message(WARNING "Dart package_config.json not found at ${PACKAGE_CONFIG_PATH}; skipping eszstd-linux64.so install.")
 endif()
 
 # Copy the native assets provided by the build.dart from all packages.
