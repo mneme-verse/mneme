@@ -27,3 +27,12 @@ Although **XZ** provided slightly better compression (saving ~7 MiB total or ~0.
 
 ## Implementation options
 Compressed files are stored as `assets/database/*.db.zst`. The application must decompress these on first launch or when a language is selected.
+
+## Library selection
+
+- **Runtime (App)**: `zstandard` package.
+  - Used for decompressing databases on the device.
+  - Efficient C bindings, works well on Android/iOS.
+- **Tooling (ETL/CLI)**: `es_compression` package.
+  - Used in `tool/builder.dart` for compressing databases during generation.
+  - **Reason**: The `zstandard` package (and its CLI wrapper) relies on system shared libraries which caused unresolved dependency errors in the Linux dev environment. `es_compression` provides a compatible implementation that works reliably in the CLI environment for compression tasks.

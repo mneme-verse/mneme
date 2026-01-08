@@ -499,6 +499,7 @@ class PoeTreeBuilder {
               // Only if we pass the map directly. batchInsertPoems extracts
               // specific fields, so it's fine to keep extra fields in the map.
 
+              final addedAuthors = <int>{};
               for (final authorName in rawAuthors) {
                 var authorId = authorNameToId[authorName];
                 if (authorId == null) {
@@ -507,12 +508,14 @@ class PoeTreeBuilder {
                   authorIdToCount[authorId] = 0;
                 }
 
-                authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
+                if (addedAuthors.add(authorId)) {
+                  authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
 
-                poemAuthorsBatch.add({
-                  'poem_id': poemId,
-                  'author_id': authorId,
-                });
+                  poemAuthorsBatch.add({
+                    'poem_id': poemId,
+                    'author_id': authorId,
+                  });
+                }
               }
 
               poemsBatch.add(p);
