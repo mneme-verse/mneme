@@ -31,7 +31,7 @@ dev_dependencies:
   args: ^2.6.0
   bloc_test: ^10.0.0
   build_runner: ^2.4.13
-  drift_dev: ^2.20.3
+  drift_dev: ^2.30.1
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
