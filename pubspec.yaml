@@ -30,7 +30,7 @@ dev_dependencies:
   archive: ^4.0.7
   args: ^2.6.0
   bloc_test: ^10.0.0
-  build_runner: ^2.4.13
+  build_runner: ^2.10.5
   drift_dev: ^2.20.3
   flutter_launcher_icons: ^0.14.4
   flutter_test:
