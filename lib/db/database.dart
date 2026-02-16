@@ -14,7 +14,7 @@ class AppDatabase extends _$AppDatabase {
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
-      onCreate: (Migrator m) async {
+      onCreate: (m) async {
         await m.createAll();
 
         // Manually create FTS5 table
