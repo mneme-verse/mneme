@@ -27,7 +27,7 @@ dependencies:
 
 
 dev_dependencies:
-  archive: ^4.0.7
+  archive: ^4.0.9
   args: ^2.6.0
   bloc_test: ^10.0.0
   build_runner: ^2.4.13
