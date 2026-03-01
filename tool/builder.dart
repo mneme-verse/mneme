@@ -665,9 +665,9 @@ class PoeTreeBuilder {
       'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
     };
 
-    // Using a fixed version for now as requested
+    // Using a fixed version for now
     const poetreeVersion = '1.0';
-    const internalVersion = 1;
+    const internalVersion = 2;
     const versionObj = '$poetreeVersion+$internalVersion';
 
     for (final file in zstFiles) {
@@ -677,7 +677,7 @@ class PoeTreeBuilder {
 
       final bytes = await file.readAsBytes();
       final size = bytes.length;
-      final hash = md5.convert(bytes).toString();
+      final hash = sha256.convert(bytes).toString();
 
       manifest[lang] = {
         'file': filename,

@@ -34,7 +34,7 @@ void main() {
     commandLog.add('$executable ${args.join(" ")}');
 
     // Simulate `gh release view` failing (release doesn't exist)
-    if (args.contains('view') && args.contains('data-v1.0+1')) {
+    if (args.contains('view') && args.contains('data-v1.0+2')) {
       return ProcessResult(0, 1, '', 'Release not found');
     }
 
@@ -69,7 +69,7 @@ void main() {
       (_) async => jsonEncode({
         'license': {'text': 'dummy'},
         'en': {
-          'version': '1.0+1',
+          'version': '1.0+2',
           'file': 'en.db.zst',
         },
       }),
@@ -128,15 +128,14 @@ void main() {
       await publisher.publish();
 
       // Check command log
-      // 1. Check if release exists
-      expect(commandLog[0], 'gh release view data-v1.0+1');
+      expect(commandLog.length, 3);
+      expect(commandLog[0], 'gh release view data-v1.0+2');
 
-      // 2. Create release
-      expect(commandLog[1], contains('gh release create data-v1.0+1'));
-      expect(commandLog[1], contains('--title Data Release v1.0+1'));
+      expect(commandLog[1], contains('gh release create data-v1.0+2'));
+      expect(commandLog[1], contains('--title Data Release v1.0+2'));
+      expect(commandLog[1], contains('--notes'));
 
-      // 3. Upload assets
-      expect(commandLog[2], contains('gh release upload data-v1.0+1'));
+      expect(commandLog[2], contains('gh release upload data-v1.0+2'));
       expect(commandLog[2], contains('assets/database/en.db.zst'));
       expect(commandLog[2], contains('assets/database/manifest.json'));
     });
