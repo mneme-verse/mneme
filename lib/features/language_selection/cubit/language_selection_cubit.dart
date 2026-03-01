@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:mneme/constants.dart';
@@ -14,9 +16,11 @@ class LanguageSelectionCubit extends Cubit<LanguageSelectionState> {
     ManifestService? manifestService,
     DatabaseInitializer? databaseInitializer,
     PreferencesService? preferencesService,
+    // coverage:ignore-start
   }) : _manifestService = manifestService ?? ManifestService(),
        _databaseInitializer = databaseInitializer ?? DatabaseInitializer(),
        _preferencesService = preferencesService ?? PreferencesService(),
+       // coverage:ignore-end
        super(const LanguageSelectionState());
 
   final ManifestService _manifestService;
@@ -33,9 +37,42 @@ class LanguageSelectionCubit extends Cubit<LanguageSelectionState> {
       ),
     );
 
-    try {
-      final manifest = await _manifestService.fetchManifest();
+    await _preferencesService.init();
 
+    Map<String, dynamic> manifest;
+    try {
+      manifest = await _manifestService.fetchManifest();
+      // Ignore the unawaited lint here or just await it. Awaiting is simpler.
+      await _preferencesService.setCachedManifest(jsonEncode(manifest));
+    } on Exception catch (error) {
+      final cachedManifestJson = _preferencesService.getCachedManifest();
+      if (cachedManifestJson != null) {
+        try {
+          manifest = Map<String, dynamic>.from(
+            jsonDecode(cachedManifestJson) as Map,
+          );
+        } on Object catch (_) {
+          // If decoding the cached manifest fails, report the original error.
+          emit(
+            state.copyWith(
+              status: LanguageSelectionStatus.error,
+              errorMessage: error.toString(),
+            ),
+          );
+          return;
+        }
+      } else {
+        emit(
+          state.copyWith(
+            status: LanguageSelectionStatus.error,
+            errorMessage: error.toString(),
+          ),
+        );
+        return;
+      }
+    }
+
+    try {
       // Filter out non-language / metadata entries and only parse valid
       // language maps. Parse each entry defensively so one bad record
       // does not prevent other languages from loading.
@@ -66,11 +103,12 @@ class LanguageSelectionCubit extends Cubit<LanguageSelectionState> {
           availableLanguages: languages,
         ),
       );
-    } on Exception catch (error) {
+    } on Object catch (e) {
+      // In case formatting or type casting fails
       emit(
         state.copyWith(
           status: LanguageSelectionStatus.error,
-          errorMessage: error.toString(),
+          errorMessage: e.toString(),
         ),
       );
     }

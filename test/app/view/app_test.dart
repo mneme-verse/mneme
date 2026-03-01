@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/app/view/app.dart';
 import 'package:mneme/features/home/view/home_page.dart';
+import 'package:mneme/features/language_selection/cubit/language_selection_cubit.dart';
 import 'package:mneme/features/language_selection/view/language_selection_page.dart';
 import 'package:mneme/repository/poetry_repository.dart';
 import 'package:mneme/services/database_initializer.dart';
@@ -18,6 +20,9 @@ class MockDatabaseInitializer extends Mock implements DatabaseInitializer {}
 
 class MockPoetryRepository extends Mock implements PoetryRepository {}
 
+class MockLanguageSelectionCubit extends MockCubit<LanguageSelectionState>
+    implements LanguageSelectionCubit {}
+
 void main() {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
 
@@ -27,6 +32,7 @@ void main() {
     late PreferencesService preferencesService;
     late DatabaseInitializer databaseInitializer;
     late PoetryRepository poetryRepository;
+    late LanguageSelectionCubit languageSelectionCubit;
     late List<Directory> tempDirs;
 
     setUp(() {
@@ -89,6 +95,7 @@ void main() {
         App(
           preferencesService: preferencesService,
           databaseInitializer: databaseInitializer,
+          languageSelectionCubit: languageSelectionCubit,
         ),
       );
       // Pump to start the animation
@@ -105,6 +112,7 @@ void main() {
         App(
           preferencesService: preferencesService,
           databaseInitializer: databaseInitializer,
+          languageSelectionCubit: languageSelectionCubit,
         ),
       );
       await tester.pumpAndSettle();
@@ -120,6 +128,7 @@ void main() {
           preferencesService: preferencesService,
           databaseInitializer: databaseInitializer,
           repositoryBuilder: (_) => poetryRepository,
+          languageSelectionCubit: languageSelectionCubit,
         ),
       );
 
@@ -144,6 +153,7 @@ void main() {
           preferencesService: preferencesService,
           databaseInitializer: databaseInitializer,
           repositoryBuilder: (_) => poetryRepository,
+          languageSelectionCubit: languageSelectionCubit,
         ),
       );
       await tester.pumpAndSettle();
@@ -183,6 +193,7 @@ void main() {
             preferencesService: preferencesService,
             databaseInitializer: databaseInitializer,
             repositoryBuilder: (_) => poetryRepository,
+            languageSelectionCubit: languageSelectionCubit,
           ),
         );
 
@@ -205,6 +216,7 @@ void main() {
             preferencesService: preferencesService,
             databaseInitializer: databaseInitializer,
             repositoryBuilder: (_) => poetryRepository,
+            languageSelectionCubit: languageSelectionCubit,
           ),
         );
 
@@ -234,6 +246,7 @@ void main() {
             preferencesService: preferencesService,
             databaseInitializer: databaseInitializer,
             repositoryBuilder: (_) => poetryRepository,
+            languageSelectionCubit: languageSelectionCubit,
           ),
         );
 

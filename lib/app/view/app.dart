@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mneme/db/connection/flutter_connection.dart';
 import 'package:mneme/db/database.dart';
 import 'package:mneme/features/home/view/home_page.dart';
+import 'package:mneme/features/language_selection/cubit/language_selection_cubit.dart';
 import 'package:mneme/features/language_selection/view/language_selection_page.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
@@ -17,11 +18,13 @@ class App extends StatefulWidget {
     this.preferencesService,
     this.databaseInitializer,
     this.repositoryBuilder,
+    this.languageSelectionCubit,
   });
 
   final PreferencesService? preferencesService;
   final DatabaseInitializer? databaseInitializer;
   final PoetryRepository Function(String language)? repositoryBuilder;
+  final LanguageSelectionCubit? languageSelectionCubit;
 
   @override
   State<App> createState() => _AppState();
@@ -148,6 +151,7 @@ class _AppState extends State<App> {
           ),
         ),
         _InitializationState.noLanguageSelected => LanguageSelectionPage(
+          cubit: widget.languageSelectionCubit,
           onSelectionComplete: () async {
             final language = _preferencesService.getSelectedLanguage();
             if (language != null) {

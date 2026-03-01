@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/features/language_selection/cubit/language_selection_cubit.dart';
@@ -95,6 +97,8 @@ void main() {
       databaseInitializer = MockDatabaseInitializer();
       preferencesService = MockPreferencesService();
 
+      when(() => preferencesService.init()).thenAnswer((_) async {});
+
       cubit = LanguageSelectionCubit(
         manifestService: manifestService,
         databaseInitializer: databaseInitializer,
@@ -108,11 +112,43 @@ void main() {
 
     group('loadLanguages', () {
       blocTest<LanguageSelectionCubit, LanguageSelectionState>(
-        'emits [loading, loaded] when successful',
+        'emits [loading, loaded] when successful and caches manifest',
         setUp: () {
           when(
             () => manifestService.fetchManifest(),
           ).thenAnswer((_) async => manifestData);
+          when(
+            () => preferencesService.setCachedManifest(any()),
+          ).thenAnswer((_) async => true);
+        },
+        build: () => cubit,
+        act: (cubit) => cubit.loadLanguages(),
+        expect: () => [
+          const LanguageSelectionState(status: LanguageSelectionStatus.loading),
+          const LanguageSelectionState(
+            status: LanguageSelectionStatus.loaded,
+            // Sorted alphabetically by name: Deutsch, English
+            availableLanguages: [deModel, enModel],
+          ),
+        ],
+        verify: (_) {
+          verify(
+            () => preferencesService.setCachedManifest(
+              jsonEncode(manifestData),
+            ),
+          ).called(1);
+        },
+      );
+
+      blocTest<LanguageSelectionCubit, LanguageSelectionState>(
+        'emits [loading, loaded] when fetch fails but cache has data',
+        setUp: () {
+          when(
+            () => manifestService.fetchManifest(),
+          ).thenThrow(Exception('Network error'));
+          when(
+            () => preferencesService.getCachedManifest(),
+          ).thenReturn(jsonEncode(manifestData));
         },
         build: () => cubit,
         act: (cubit) => cubit.loadLanguages(),
@@ -127,11 +163,14 @@ void main() {
       );
 
       blocTest<LanguageSelectionCubit, LanguageSelectionState>(
-        'emits [loading, error] when fetch fails',
+        'emits [loading, error] when fetch fails and cache is empty',
         setUp: () {
           when(
             () => manifestService.fetchManifest(),
           ).thenThrow(Exception('Network error'));
+          when(
+            () => preferencesService.getCachedManifest(),
+          ).thenReturn(null);
         },
         build: () => cubit,
         act: (cubit) => cubit.loadLanguages(),
@@ -140,6 +179,55 @@ void main() {
           const LanguageSelectionState(
             status: LanguageSelectionStatus.error,
             errorMessage: 'Exception: Network error',
+          ),
+        ],
+        verify: (_) {
+          verify(() => preferencesService.getCachedManifest()).called(1);
+        },
+      );
+
+      blocTest<LanguageSelectionCubit, LanguageSelectionState>(
+        'emits [loading, error] when fetch fails and cached JSON is invalid',
+        setUp: () {
+          when(
+            () => manifestService.fetchManifest(),
+          ).thenThrow(Exception('Network error'));
+          when(
+            () => preferencesService.getCachedManifest(),
+          ).thenReturn('not valid json{{{');
+        },
+        build: () => cubit,
+        act: (cubit) => cubit.loadLanguages(),
+        expect: () => [
+          const LanguageSelectionState(status: LanguageSelectionStatus.loading),
+          const LanguageSelectionState(
+            status: LanguageSelectionStatus.error,
+            errorMessage: 'Exception: Network error',
+          ),
+        ],
+      );
+
+      blocTest<LanguageSelectionCubit, LanguageSelectionState>(
+        'emits [loading, loaded] with empty list '
+        'when manifest data has invalid format',
+        setUp: () {
+          when(
+            () => manifestService.fetchManifest(),
+          ).thenAnswer(
+            (_) async => <String, dynamic>{
+              'en': 'not a map',
+            },
+          );
+          when(
+            () => preferencesService.setCachedManifest(any()),
+          ).thenAnswer((_) async => true);
+        },
+        build: () => cubit,
+        act: (cubit) => cubit.loadLanguages(),
+        expect: () => [
+          const LanguageSelectionState(status: LanguageSelectionStatus.loading),
+          const LanguageSelectionState(
+            status: LanguageSelectionStatus.loaded,
           ),
         ],
       );
@@ -157,6 +245,9 @@ void main() {
               'meta': <String, dynamic>{'version': '1.0'},
             },
           );
+          when(
+            () => preferencesService.setCachedManifest(any()),
+          ).thenAnswer((_) async => true);
         },
         build: () => cubit,
         act: (cubit) => cubit.loadLanguages(),
@@ -181,6 +272,9 @@ void main() {
               'en': 'not a map',
             },
           );
+          when(
+            () => preferencesService.setCachedManifest(any()),
+          ).thenAnswer((_) async => true);
         },
         build: () => cubit,
         act: (cubit) => cubit.loadLanguages(),
@@ -210,6 +304,9 @@ void main() {
               },
             },
           );
+          when(
+            () => preferencesService.setCachedManifest(any()),
+          ).thenAnswer((_) async => true);
         },
         build: () => cubit,
         act: (cubit) => cubit.loadLanguages(),

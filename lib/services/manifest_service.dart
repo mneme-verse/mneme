@@ -7,7 +7,7 @@ import 'package:mneme/constants.dart';
 class ManifestService {
   ManifestService({
     Dio? dio,
-  }) : _dio = dio ?? Dio();
+  }) : _dio = dio ?? Dio(); // coverage:ignore-line
 
   final Dio _dio;
 

@@ -24,9 +24,9 @@ class DatabaseDownloader {
     Zstandard? zstandard,
     es.ZstdCodec? esZstd,
     bool? isLinux,
-  }) : _dio = dio ?? Dio(),
+  }) : _dio = dio ?? Dio(), // coverage:ignore-line
        _zstandard = zstandard,
-       _esZstd = esZstd ?? es.ZstdCodec(),
+       _esZstd = esZstd ?? es.ZstdCodec(), // coverage:ignore-line
        _isLinux = isLinux ?? Platform.isLinux;
 
   final Dio _dio;

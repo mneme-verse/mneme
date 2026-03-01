@@ -26,5 +26,15 @@ void main() {
       await service.clearSelectedLanguage();
       expect(service.getSelectedLanguage(), isNull);
     });
+
+    test('getCachedManifest returns null when not set', () {
+      expect(service.getCachedManifest(), isNull);
+    });
+
+    test('setCachedManifest saves and retrieves manifest json', () async {
+      const manifestJson = '{"en":{"name":"English"}}';
+      await service.setCachedManifest(manifestJson);
+      expect(service.getCachedManifest(), equals(manifestJson));
+    });
   });
 }

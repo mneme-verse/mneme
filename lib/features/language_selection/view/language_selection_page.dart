@@ -9,13 +9,24 @@ import 'package:mneme/l10n/l10n.dart';
 class LanguageSelectionPage extends StatelessWidget {
   const LanguageSelectionPage({
     this.onSelectionComplete,
+    this.cubit,
     super.key,
   });
 
   final VoidCallback? onSelectionComplete;
+  final LanguageSelectionCubit? cubit;
 
   @override
   Widget build(BuildContext context) {
+    if (cubit != null) {
+      return BlocProvider.value(
+        value: cubit!,
+        child: LanguageSelectionView(
+          onSelectionComplete: onSelectionComplete,
+        ),
+      );
+    }
+    // coverage:ignore-start
     return BlocProvider(
       // Fire and forget - loading starts immediately
       // ignore: discarded_futures
@@ -24,6 +35,7 @@ class LanguageSelectionPage extends StatelessWidget {
         onSelectionComplete: onSelectionComplete,
       ),
     );
+    // coverage:ignore-end
   }
 }
 

@@ -4,7 +4,8 @@ import 'package:mneme/services/database_downloader.dart';
 class DatabaseInitializer {
   DatabaseInitializer({
     DatabaseDownloader? databaseDownloader,
-  }) : _databaseDownloader = databaseDownloader ?? DatabaseDownloader();
+  }) : _databaseDownloader =
+           databaseDownloader ?? DatabaseDownloader(); // coverage:ignore-line
 
   final DatabaseDownloader _databaseDownloader;
 

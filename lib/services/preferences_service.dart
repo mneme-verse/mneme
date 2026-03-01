@@ -7,6 +7,7 @@ class PreferencesService {
   SharedPreferences? _prefs;
 
   static const _selectedLanguageKey = 'selected_language';
+  static const _cachedManifestKey = 'cached_manifest';
 
   /// Initialize the preferences service.
   Future<void> init() async {
@@ -28,5 +29,16 @@ class PreferencesService {
   Future<bool> clearSelectedLanguage() async {
     await init();
     return _prefs!.remove(_selectedLanguageKey);
+  }
+
+  /// Get the cached manifest JSON string, or null if not set.
+  String? getCachedManifest() {
+    return _prefs?.getString(_cachedManifestKey);
+  }
+
+  /// Set the cached manifest JSON string.
+  Future<bool> setCachedManifest(String manifestJson) async {
+    await init();
+    return _prefs!.setString(_cachedManifestKey, manifestJson);
   }
 }
