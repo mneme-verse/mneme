@@ -27,6 +27,7 @@ void main() {
       size: 1024,
       hash: 'abc',
       version: '1.0',
+      file: 'en.db.zst',
     );
 
     test('supports value equality', () {
@@ -38,6 +39,7 @@ void main() {
           size: 1024,
           hash: 'abc',
           version: '1.0',
+          file: 'en.db.zst',
         ),
         equals(languageModel),
       );
@@ -53,7 +55,31 @@ void main() {
     test('props are correct', () {
       expect(
         languageModel.props,
-        equals(['en', 'English', licenseModel, 1024, 'abc', '1.0']),
+        equals([
+          'en',
+          'English',
+          licenseModel,
+          1024,
+          'abc',
+          '1.0',
+          'en.db.zst',
+        ]),
+      );
+    });
+
+    test('fromJson throws ArgumentError for invalid code', () {
+      expect(
+        () => LanguageModel.fromJson('../en', languageJson, 'English'),
+        throwsArgumentError,
+      );
+    });
+
+    test('fromJson throws ArgumentError for invalid filename', () {
+      final maliciousJson = Map<String, dynamic>.from(languageJson);
+      maliciousJson['file'] = '../malicious.db.zst';
+      expect(
+        () => LanguageModel.fromJson('en', maliciousJson, 'English'),
+        throwsArgumentError,
       );
     });
   });

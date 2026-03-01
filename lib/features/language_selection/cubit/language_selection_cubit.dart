@@ -87,7 +87,8 @@ class LanguageSelectionCubit extends Cubit<LanguageSelectionState> {
     );
 
     try {
-      final downloadUrl = '$kDatabaseReleaseBaseUrl/${language.code}.db.zst';
+      final fileName = language.file ?? '${language.code}.db.zst';
+      final downloadUrl = '$kDatabaseReleaseBaseUrl/$fileName';
 
       await _databaseInitializer.initializeDatabase(
         language: language.code,

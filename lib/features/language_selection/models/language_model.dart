@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:mneme/utils/path_sanitizer.dart';
 
 /// License information for a language database.
 class LicenseModel extends Equatable {
@@ -30,6 +31,7 @@ class LanguageModel extends Equatable {
     required this.size,
     required this.hash,
     required this.version,
+    this.file,
   });
 
   factory LanguageModel.fromJson(
@@ -37,6 +39,13 @@ class LanguageModel extends Equatable {
     Map<String, dynamic> json,
     String name,
   ) {
+    if (!PathSanitizer.isValidLanguageCode(code)) {
+      throw ArgumentError('Invalid language code: $code');
+    }
+    final file = json['file'] as String?;
+    if (file != null && !PathSanitizer.isSafeFilename(file)) {
+      throw ArgumentError('Invalid filename in manifest: $file');
+    }
     return LanguageModel(
       code: code,
       name: name,
@@ -44,6 +53,7 @@ class LanguageModel extends Equatable {
       size: json['size'] as int,
       hash: json['hash'] as String,
       version: json['version'] as String,
+      file: file,
     );
   }
 
@@ -53,7 +63,8 @@ class LanguageModel extends Equatable {
   final int size;
   final String hash;
   final String version;
+  final String? file;
 
   @override
-  List<Object?> get props => [code, name, license, size, hash, version];
+  List<Object?> get props => [code, name, license, size, hash, version, file];
 }

@@ -58,6 +58,7 @@ void main() {
       size: 100,
       hash: 'hash',
       version: '1.0',
+      file: 'en.db.zst',
     );
 
     const deModel = LanguageModel(
@@ -67,6 +68,7 @@ void main() {
       size: 100,
       hash: 'hash',
       version: '1.0',
+      file: 'de.db.zst',
     );
 
     final manifestData = {
