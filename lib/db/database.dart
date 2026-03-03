@@ -84,10 +84,12 @@ class AppDatabase extends _$AppDatabase {
 
     await customStatement(
       r'''
-      INSERT INTO authors (id, name, poem_count)
+      INSERT INTO authors (id, name, born, died, poem_count)
       SELECT
         json_extract(value, '$.id'),
         json_extract(value, '$.name'),
+        json_extract(value, '$.born'),
+        json_extract(value, '$.died'),
         json_extract(value, '$.poem_count')
       FROM json_each(?)
       ''',

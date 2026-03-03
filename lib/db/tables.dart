@@ -17,6 +17,8 @@ class Poems extends Table {
 class Authors extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
+  TextColumn get born => text().nullable()();
+  TextColumn get died => text().nullable()();
   IntColumn get poemCount => integer()();
 }
 

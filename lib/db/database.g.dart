@@ -431,6 +431,24 @@ class $AuthorsTable extends Authors with TableInfo<$AuthorsTable, Author> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _bornMeta = const VerificationMeta('born');
+  @override
+  late final GeneratedColumn<String> born = GeneratedColumn<String>(
+    'born',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _diedMeta = const VerificationMeta('died');
+  @override
+  late final GeneratedColumn<String> died = GeneratedColumn<String>(
+    'died',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _poemCountMeta = const VerificationMeta(
     'poemCount',
   );
@@ -443,7 +461,7 @@ class $AuthorsTable extends Authors with TableInfo<$AuthorsTable, Author> {
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, poemCount];
+  List<GeneratedColumn> get $columns => [id, name, born, died, poemCount];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -466,6 +484,18 @@ class $AuthorsTable extends Authors with TableInfo<$AuthorsTable, Author> {
       );
     } else if (isInserting) {
       context.missing(_nameMeta);
+    }
+    if (data.containsKey('born')) {
+      context.handle(
+        _bornMeta,
+        born.isAcceptableOrUnknown(data['born']!, _bornMeta),
+      );
+    }
+    if (data.containsKey('died')) {
+      context.handle(
+        _diedMeta,
+        died.isAcceptableOrUnknown(data['died']!, _diedMeta),
+      );
     }
     if (data.containsKey('poem_count')) {
       context.handle(
@@ -492,6 +522,14 @@ class $AuthorsTable extends Authors with TableInfo<$AuthorsTable, Author> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      born: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}born'],
+      ),
+      died: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}died'],
+      ),
       poemCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}poem_count'],
@@ -508,13 +546,27 @@ class $AuthorsTable extends Authors with TableInfo<$AuthorsTable, Author> {
 class Author extends DataClass implements Insertable<Author> {
   final int id;
   final String name;
+  final String? born;
+  final String? died;
   final int poemCount;
-  const Author({required this.id, required this.name, required this.poemCount});
+  const Author({
+    required this.id,
+    required this.name,
+    this.born,
+    this.died,
+    required this.poemCount,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || born != null) {
+      map['born'] = Variable<String>(born);
+    }
+    if (!nullToAbsent || died != null) {
+      map['died'] = Variable<String>(died);
+    }
     map['poem_count'] = Variable<int>(poemCount);
     return map;
   }
@@ -523,6 +575,8 @@ class Author extends DataClass implements Insertable<Author> {
     return AuthorsCompanion(
       id: Value(id),
       name: Value(name),
+      born: born == null && nullToAbsent ? const Value.absent() : Value(born),
+      died: died == null && nullToAbsent ? const Value.absent() : Value(died),
       poemCount: Value(poemCount),
     );
   }
@@ -535,6 +589,8 @@ class Author extends DataClass implements Insertable<Author> {
     return Author(
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      born: serializer.fromJson<String?>(json['born']),
+      died: serializer.fromJson<String?>(json['died']),
       poemCount: serializer.fromJson<int>(json['poemCount']),
     );
   }
@@ -544,19 +600,31 @@ class Author extends DataClass implements Insertable<Author> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
+      'born': serializer.toJson<String?>(born),
+      'died': serializer.toJson<String?>(died),
       'poemCount': serializer.toJson<int>(poemCount),
     };
   }
 
-  Author copyWith({int? id, String? name, int? poemCount}) => Author(
+  Author copyWith({
+    int? id,
+    String? name,
+    Value<String?> born = const Value.absent(),
+    Value<String?> died = const Value.absent(),
+    int? poemCount,
+  }) => Author(
     id: id ?? this.id,
     name: name ?? this.name,
+    born: born.present ? born.value : this.born,
+    died: died.present ? died.value : this.died,
     poemCount: poemCount ?? this.poemCount,
   );
   Author copyWithCompanion(AuthorsCompanion data) {
     return Author(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      born: data.born.present ? data.born.value : this.born,
+      died: data.died.present ? data.died.value : this.died,
       poemCount: data.poemCount.present ? data.poemCount.value : this.poemCount,
     );
   }
@@ -566,45 +634,59 @@ class Author extends DataClass implements Insertable<Author> {
     return (StringBuffer('Author(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('born: $born, ')
+          ..write('died: $died, ')
           ..write('poemCount: $poemCount')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, poemCount);
+  int get hashCode => Object.hash(id, name, born, died, poemCount);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Author &&
           other.id == this.id &&
           other.name == this.name &&
+          other.born == this.born &&
+          other.died == this.died &&
           other.poemCount == this.poemCount);
 }
 
 class AuthorsCompanion extends UpdateCompanion<Author> {
   final Value<int> id;
   final Value<String> name;
+  final Value<String?> born;
+  final Value<String?> died;
   final Value<int> poemCount;
   const AuthorsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.born = const Value.absent(),
+    this.died = const Value.absent(),
     this.poemCount = const Value.absent(),
   });
   AuthorsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
+    this.born = const Value.absent(),
+    this.died = const Value.absent(),
     required int poemCount,
   }) : name = Value(name),
        poemCount = Value(poemCount);
   static Insertable<Author> custom({
     Expression<int>? id,
     Expression<String>? name,
+    Expression<String>? born,
+    Expression<String>? died,
     Expression<int>? poemCount,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (born != null) 'born': born,
+      if (died != null) 'died': died,
       if (poemCount != null) 'poem_count': poemCount,
     });
   }
@@ -612,11 +694,15 @@ class AuthorsCompanion extends UpdateCompanion<Author> {
   AuthorsCompanion copyWith({
     Value<int>? id,
     Value<String>? name,
+    Value<String?>? born,
+    Value<String?>? died,
     Value<int>? poemCount,
   }) {
     return AuthorsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      born: born ?? this.born,
+      died: died ?? this.died,
       poemCount: poemCount ?? this.poemCount,
     );
   }
@@ -630,6 +716,12 @@ class AuthorsCompanion extends UpdateCompanion<Author> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
+    if (born.present) {
+      map['born'] = Variable<String>(born.value);
+    }
+    if (died.present) {
+      map['died'] = Variable<String>(died.value);
+    }
     if (poemCount.present) {
       map['poem_count'] = Variable<int>(poemCount.value);
     }
@@ -641,6 +733,8 @@ class AuthorsCompanion extends UpdateCompanion<Author> {
     return (StringBuffer('AuthorsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('born: $born, ')
+          ..write('died: $died, ')
           ..write('poemCount: $poemCount')
           ..write(')'))
         .toString();
@@ -1404,12 +1498,16 @@ typedef $$AuthorsTableCreateCompanionBuilder =
     AuthorsCompanion Function({
       Value<int> id,
       required String name,
+      Value<String?> born,
+      Value<String?> died,
       required int poemCount,
     });
 typedef $$AuthorsTableUpdateCompanionBuilder =
     AuthorsCompanion Function({
       Value<int> id,
       Value<String> name,
+      Value<String?> born,
+      Value<String?> died,
       Value<int> poemCount,
     });
 
@@ -1452,6 +1550,16 @@ class $$AuthorsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get born => $composableBuilder(
+    column: $table.born,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get died => $composableBuilder(
+    column: $table.died,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1505,6 +1613,16 @@ class $$AuthorsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get born => $composableBuilder(
+    column: $table.born,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get died => $composableBuilder(
+    column: $table.died,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get poemCount => $composableBuilder(
     column: $table.poemCount,
     builder: (column) => ColumnOrderings(column),
@@ -1525,6 +1643,12 @@ class $$AuthorsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get born =>
+      $composableBuilder(column: $table.born, builder: (column) => column);
+
+  GeneratedColumn<String> get died =>
+      $composableBuilder(column: $table.died, builder: (column) => column);
 
   GeneratedColumn<int> get poemCount =>
       $composableBuilder(column: $table.poemCount, builder: (column) => column);
@@ -1585,16 +1709,28 @@ class $$AuthorsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> born = const Value.absent(),
+                Value<String?> died = const Value.absent(),
                 Value<int> poemCount = const Value.absent(),
-              }) => AuthorsCompanion(id: id, name: name, poemCount: poemCount),
+              }) => AuthorsCompanion(
+                id: id,
+                name: name,
+                born: born,
+                died: died,
+                poemCount: poemCount,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
+                Value<String?> born = const Value.absent(),
+                Value<String?> died = const Value.absent(),
                 required int poemCount,
               }) => AuthorsCompanion.insert(
                 id: id,
                 name: name,
+                born: born,
+                died: died,
                 poemCount: poemCount,
               ),
           withReferenceMapper: (p0) => p0

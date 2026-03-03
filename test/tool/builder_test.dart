@@ -35,7 +35,7 @@ void main() {
     test('extracts valid poem correctly', () {
       final json = {
         'title': 'Test Poem',
-        'author': {'name': 'Test Author'},
+        'author': {'name': 'Test Author', 'born': 1800, 'died': 1850},
         'body': [
           {'text': 'Line 1'},
           {'text': 'Line 2'},
@@ -47,7 +47,9 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!['title'], 'Test Poem');
-      expect(result['raw_authors'], ['Test Author']);
+      expect(result['raw_authors'], [
+        {'name': 'Test Author', 'born': '1800', 'died': '1850'},
+      ]);
       expect(result['body'], 'Line 1\nLine 2');
       expect(result['year'], '2024');
     });
@@ -65,7 +67,9 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!['title'], 'Anon Poem');
-      expect(result['raw_authors'], ['[Anonymous]']);
+      expect(result['raw_authors'], [
+        {'name': '[Anonymous]', 'born': null, 'died': null},
+      ]);
     });
 
     test('handles list of authors', () {
@@ -83,7 +87,10 @@ void main() {
       final result = extractPoemData(json, 'en');
 
       expect(result, isNotNull);
-      expect(result!['raw_authors'], ['A1', 'A2']);
+      expect(result!['raw_authors'], [
+        {'name': 'A1', 'born': null, 'died': null},
+        {'name': 'A2', 'born': null, 'died': null},
+      ]);
     });
 
     test('handles missing optional fields', () {

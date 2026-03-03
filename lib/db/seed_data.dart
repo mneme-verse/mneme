@@ -72,6 +72,8 @@ Future<void> seedDatabase(AppDatabase db, {String? language}) async {
       authorsList.add({
         'id': authorId,
         'name': authorName,
+        'born': null,
+        'died': null,
         'poem_count': 1,
       });
     } else {

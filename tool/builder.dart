@@ -444,6 +444,7 @@ class PoeTreeBuilder {
       // Author Registry state
       final authorNameToId = <String, int>{};
       final authorIdToCount = <int, int>{};
+      final authorIdToLifetime = <int, Map<String, dynamic>>{};
       var nextAuthorId = 1;
       var nextPoemId = 1;
 
@@ -491,21 +492,30 @@ class PoeTreeBuilder {
               final poemId = nextPoemId++;
               p['id'] = poemId; // Assign manual ID
 
-              final rawAuthors = p['raw_authors'] as List<String>;
+              final rawAuthors = p['raw_authors'] as List<Map<String, dynamic>>;
               // Denormalize author names for FTS (comma separated)
-              p['author_names'] = rawAuthors.join(', ');
+              p['author_names'] = rawAuthors
+                  .map((a) => a['name'] as String)
+                  .join(', ');
 
               // We remove 'raw_authors' before insert to avoid SQL error?
               // Only if we pass the map directly. batchInsertPoems extracts
               // specific fields, so it's fine to keep extra fields in the map.
 
               final addedAuthors = <int>{};
-              for (final authorName in rawAuthors) {
+              for (final authorData in rawAuthors) {
+                final authorName = authorData['name'] as String;
                 var authorId = authorNameToId[authorName];
                 if (authorId == null) {
                   authorId = nextAuthorId++;
                   authorNameToId[authorName] = authorId;
                   authorIdToCount[authorId] = 0;
+
+                  // Store the lifetime data for this author
+                  authorIdToLifetime[authorId] = {
+                    'born': authorData['born'],
+                    'died': authorData['died'],
+                  };
                 }
 
                 if (addedAuthors.add(authorId)) {
@@ -552,9 +562,12 @@ class PoeTreeBuilder {
       print('\n  👥 Inserting ${authorNameToId.length} authors...');
       // Prepare authors for batch insert
       final authorsList = authorNameToId.entries.map((entry) {
+        final lifetime = authorIdToLifetime[entry.value];
         return {
           'id': entry.value,
           'name': entry.key,
+          'born': lifetime?['born'],
+          'died': lifetime?['died'],
           'poem_count': authorIdToCount[entry.value] ?? 0,
         };
       }).toList();
@@ -719,23 +732,33 @@ Map<String, dynamic>? extractPoemData(
       return null; // Skip poems without titles
     }
 
-    // Extract author name(s)
+    // Extract author name(s) and lifetime data
     final authorData = data['author'];
-    List<String> authors;
+    final authors = <Map<String, dynamic>>[];
 
     if (authorData is List) {
       // Multiple authors
-      authors = authorData
-          .cast<Map<String, dynamic>>()
-          .map((a) => a['name'] as String?)
-          .where((n) => n != null && n.isNotEmpty)
-          .cast<String>()
-          .toList();
+      for (final a in authorData) {
+        if (a is Map<String, dynamic>) {
+          final authorName = a['name'] as String?;
+          if (authorName != null && authorName.isNotEmpty) {
+            authors.add({
+              'name': authorName,
+              'born': a['born']?.toString(),
+              'died': a['died']?.toString(),
+            });
+          }
+        }
+      }
       if (authors.isEmpty) return null;
     } else if (authorData is Map<String, dynamic>) {
       final authorName = authorData['name'] as String? ?? '';
       if (authorName.isEmpty) return null;
-      authors = [authorName];
+      authors.add({
+        'name': authorName,
+        'born': authorData['born']?.toString(),
+        'died': authorData['died']?.toString(),
+      });
     } else {
       return null;
     }
