@@ -86,6 +86,7 @@ class _AppState extends State<App> {
       final isAvailable = await _databaseInitializer.isDatabaseAvailable(
         language,
       );
+      if (!mounted) return;
       if (!isAvailable) {
         // Database is missing — fall back to language selection
         await _preferencesService.clearSelectedLanguage();

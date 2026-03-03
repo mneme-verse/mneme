@@ -34,9 +34,12 @@ class DatabaseDownloader {
   final es.ZstdCodec _esZstd;
   final bool _isLinux;
 
+  /// Lazily initialized [Zstandard] instance used on non-Linux platforms.
+  late final Zstandard _lazyZstandard = _zstandard ?? Zstandard();
+
   /// Returns the [Zstandard] instance, creating it lazily.
   /// Only called on non-Linux platforms.
-  Zstandard get _zstd => _zstandard ?? Zstandard();
+  Zstandard get _zstd => _lazyZstandard;
 
   /// Checks if the database file for [lang] exists.
   Future<bool> isDatabaseAvailable(String lang) async {
