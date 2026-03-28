@@ -53,6 +53,61 @@ Requires **Node.js** and **npm** installed.
 
 ---
 
+## Development Container (Code-on-Incus)
+
+This project supports [Code-on-Incus (COI)](https://github.com/mensfeld/code-on-incus) for isolated development environments with AI coding assistants.
+
+### Quick Start
+
+1. **Install Incus and COI:**
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/mensfeld/code-on-incus/master/install.sh | bash
+   ```
+
+2. **Build the Flutter image:**
+   ```sh
+   ./dev/coi-image.sh build
+   ```
+
+3. **Start a shell in the container:**
+   ```sh
+   ./dev/coi-image.sh shell
+   ```
+
+4. **Verify the toolchain:**
+   ```sh
+   ./dev/validate-env.sh
+   ```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `./dev/coi-image.sh build` | Build the `mneme-dev` Docker image |
+| `./dev/coi-image.sh shell` | Enter a shell in the development container |
+| `./dev/coi-image.sh list` | List existing `mneme-` images |
+| `./dev/coi-image.sh delete` | Delete the `mneme-dev` image |
+| `./dev/coi-image.sh lint` | Check script syntax and permissions |
+
+### What's Included
+
+The `mneme-dev` image builds on the COI base image (Ubuntu 22.04) and adds:
+- Flutter SDK (latest stable)
+- Android SDK (platforms;android-35, build-tools;35.0.0)
+- OpenCode CLI with Superpowers plugin
+- RTK (RTK-AI toolkit)
+- Node.js 20
+- Java 17 (OpenJDK)
+- SQLite3
+
+### Files
+
+- `dev/coi-build.sh` - Script that installs Flutter, Android SDK, and tools
+- `dev/coi-image.sh` - Interface for managing the development container
+- `dev/validate-env.sh` - Validates the toolchain inside the container
+
+---
+
 ## Getting Started 🚀
 
 This project contains 3 flavors:
