@@ -4,10 +4,6 @@
     "@appTitle": {
         "description": "Text shown in the AppBar of the App"
     },
-    "selectLanguage": "Select Language",
-    "@selectLanguage": {
-        "description": "Title on the Onboarding screen"
-    },
     "authors": "Authors",
     "@authors": {
         "description": "Title of the Home screen"
@@ -24,5 +20,43 @@
                 "type": "int"
             }
         }
+    },
+    "languageSelectionTitle": "Select Language",
+    "@languageSelectionTitle": {
+        "description": "Title for language selection page"
+    },
+    "downloadingLanguage": "Downloading {language}...",
+    "@downloadingLanguage": {
+        "description": "Message shown while downloading language database",
+        "placeholders": {
+            "language": {
+                "type": "String"
+            }
+        }
+    },
+    "errorOccurred": "Error: {message}",
+    "@errorOccurred": {
+        "description": "Error message displayed to user",
+        "placeholders": {
+            "message": {
+                "type": "String"
+            }
+        }
+    },
+    "retry": "Retry",
+    "@retry": {
+        "description": "Button text to retry an action"
+    },
+    "tapForLicense": "Tap for license",
+    "@tapForLicense": {
+        "description": "Subtitle suffix indicating tap action for license"
+    },
+    "licenseInfoTitle": "License Information",
+    "@licenseInfoTitle": {
+        "description": "Title for license info dialog"
+    },
+    "close": "Close",
+    "@close": {
+        "description": "Button text to close dialog"
     }
 }

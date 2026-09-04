@@ -499,6 +499,7 @@ class PoeTreeBuilder {
               // Only if we pass the map directly. batchInsertPoems extracts
               // specific fields, so it's fine to keep extra fields in the map.
 
+              final addedAuthors = <int>{};
               for (final authorName in rawAuthors) {
                 var authorId = authorNameToId[authorName];
                 if (authorId == null) {
@@ -507,12 +508,14 @@ class PoeTreeBuilder {
                   authorIdToCount[authorId] = 0;
                 }
 
-                authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
+                if (addedAuthors.add(authorId)) {
+                  authorIdToCount[authorId] = authorIdToCount[authorId]! + 1;
 
-                poemAuthorsBatch.add({
-                  'poem_id': poemId,
-                  'author_id': authorId,
-                });
+                  poemAuthorsBatch.add({
+                    'poem_id': poemId,
+                    'author_id': authorId,
+                  });
+                }
               }
 
               poemsBatch.add(p);
@@ -662,9 +665,9 @@ class PoeTreeBuilder {
       'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
     };
 
-    // Using a fixed version for now as requested
+    // Using a fixed version for now
     const poetreeVersion = '1.0';
-    const internalVersion = 1;
+    const internalVersion = 2;
     const versionObj = '$poetreeVersion+$internalVersion';
 
     for (final file in zstFiles) {
@@ -674,7 +677,7 @@ class PoeTreeBuilder {
 
       final bytes = await file.readAsBytes();
       final size = bytes.length;
-      final hash = md5.convert(bytes).toString();
+      final hash = sha256.convert(bytes).toString();
 
       manifest[lang] = {
         'file': filename,

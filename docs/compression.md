@@ -26,4 +26,16 @@ Although **XZ** provided slightly better compression (saving ~7 MiB total or ~0.
 3.  **Modern Standard**: ZSTD is becoming the industry standard for high-performance compression.
 
 ## Implementation options
-Compressed files are stored as `assets/database/*.db.zst`. The application must decompress these on first launch or when a language is selected.
+Compressed database artifacts (`*.db.zst`) are published as release assets (for example, on GitHub Releases) and downloaded by the application at runtime. The app must decompress these downloaded files before use. Currently, the application initialization flow requires a successful download and decompression before proceeding; any bundled assets (`assets/database/*.db`) are intended for use in tests or as a base, but are not used as an automatic fallback in the current release flow.
+
+## Library selection
+
+- **Runtime (App)**:
+  - **Non-Linux platforms (Android/iOS, etc.)**: `zstandard` package.
+    - Used for decompressing databases on the device.
+    - Efficient C bindings, works well on Android/iOS.
+  - **Linux**: `es_compression` package (via the `eszstd` binary).
+    - Used for decompressing databases on Linux to avoid issues with system shared libraries required by `zstandard`.
+- **Tooling (ETL/CLI)**: `es_compression` package.
+  - Used in `tool/builder.dart` for compressing databases during generation.
+  - **Reason**: The `zstandard` package (and its CLI wrapper) relies on system shared libraries which caused unresolved dependency errors in the Linux dev environment. `es_compression` provides a compatible implementation that works reliably in the CLI environment for compression tasks.

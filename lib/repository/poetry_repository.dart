@@ -87,4 +87,7 @@ class PoetryRepository {
     final result = await query.getSingleOrNull();
     return result?.value;
   }
+
+  /// Close the database connection.
+  Future<void> close() => _db.close();
 }
