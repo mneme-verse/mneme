@@ -125,9 +125,9 @@ class RecitationCubit extends Cubit<RecitationState> {
     // may emit.
     final attempt = ++_attempt;
 
-    final hypothesisKeys = normalizeRecitationText(text).tokens
-        .map((token) => token.key)
-        .toList();
+    final hypothesisKeys = normalizeRecitationText(
+      text,
+    ).tokens.map((token) => token.key).toList();
     if (hypothesisKeys.isEmpty) {
       emit(
         state.copyWith(
@@ -145,8 +145,7 @@ class RecitationCubit extends Cubit<RecitationState> {
       final candidates = await _poetryRepository.findCandidatePassages(
         hypothesisKeys,
       );
-      if (attempt != _attempt ||
-          state.phase != RecitationPhase.listening) {
+      if (attempt != _attempt || state.phase != RecitationPhase.listening) {
         return;
       }
       final located = _locateBest(candidates, hypothesisKeys);
@@ -172,8 +171,7 @@ class RecitationCubit extends Cubit<RecitationState> {
         ),
       );
     } on Exception catch (error) {
-      if (attempt != _attempt ||
-          state.phase != RecitationPhase.listening) {
+      if (attempt != _attempt || state.phase != RecitationPhase.listening) {
         return;
       }
       emit(state.copyWith(hypothesis: text, error: error));
@@ -216,14 +214,15 @@ class RecitationCubit extends Cubit<RecitationState> {
         final wrongWords = alignment.words
             .where((word) => word.verdict == WordVerdict.wrong)
             .length;
-        if (best != null && !_beats(
-          matchedWords: alignment.matchedWords,
-          wrongWords: wrongWords,
-          score: score,
-          poemId: candidate.poemId,
-          passageId: candidate.passageId,
-          best: best,
-        )) {
+        if (best != null &&
+            !_beats(
+              matchedWords: alignment.matchedWords,
+              wrongWords: wrongWords,
+              score: score,
+              poemId: candidate.poemId,
+              passageId: candidate.passageId,
+              best: best,
+            )) {
           continue;
         }
         best = _Located(

@@ -87,6 +87,7 @@ class PoetryRepository {
     final result = await query.getSingleOrNull();
     return result?.value;
   }
+
   /// Finds recitation passages matching the recognized words.
   ///
   /// [termKeys] are normalized hypothesis keys. Each key becomes a quoted
@@ -157,4 +158,4 @@ class RecitationCandidate {
   final String poemBody;
   final int startToken;
   final int endToken;
- }
+}

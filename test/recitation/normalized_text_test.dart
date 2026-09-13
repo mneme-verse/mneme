@@ -4,7 +4,8 @@ import 'package:mneme/recitation/normalized_text.dart';
 void main() {
   group('normalizeRecitationText', () {
     test('tokenizes a quatrain with exact UTF-16 offsets', () {
-      const text = 'Я помню чудное мгновенье:\n'
+      const text =
+          'Я помню чудное мгновенье:\n'
           'Передо мной явилась ты,\n'
           'Как мимолётное виденье,\n'
           'Как гений чистой красоты.';

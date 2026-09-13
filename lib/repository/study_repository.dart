@@ -41,9 +41,9 @@ class StudyRepository {
 
   /// Review logs for [poemKey], newest first. Empty for unseen poems.
   Future<List<fsrs.ReviewLog>> reviewHistory(String poemKey) async {
-    final card = await (_db.select(_db.studyCards)
-          ..where((row) => row.poemKey.equals(poemKey)))
-        .getSingleOrNull();
+    final card = await (_db.select(
+      _db.studyCards,
+    )..where((row) => row.poemKey.equals(poemKey))).getSingleOrNull();
     if (card == null) return [];
     final rows =
         await (_db.select(_db.studyReviewLogs)
@@ -67,12 +67,13 @@ class StudyRepository {
     final at = (reviewDateTime ?? DateTime.now().toUtc()).toUtc();
     return _db.transaction(() async {
       final card = await _getOrCreateCard(poemKey);
-      final existing = await (_db.select(_db.studyReviewLogs)..where(
-            (log) =>
-                log.cardId.equals(card.cardId) &
-                log.reviewMillis.equals(at.millisecondsSinceEpoch),
-          ))
-          .getSingleOrNull();
+      final existing =
+          await (_db.select(_db.studyReviewLogs)..where(
+                (log) =>
+                    log.cardId.equals(card.cardId) &
+                    log.reviewMillis.equals(at.millisecondsSinceEpoch),
+              ))
+              .getSingleOrNull();
       if (existing != null) return (card: card, log: _toLog(existing));
 
       final result = _scheduler.reviewCard(
@@ -81,20 +82,20 @@ class StudyRepository {
         reviewDateTime: at,
         reviewDuration: reviewDuration,
       );
-      await (_db.update(_db.studyCards)
-            ..where((row) => row.id.equals(card.cardId)))
-          .write(
-            StudyCardsCompanion(
-              state: Value(result.card.state.value),
-              step: Value(result.card.step),
-              stability: Value(result.card.stability),
-              difficulty: Value(result.card.difficulty),
-              dueMillis: Value(result.card.due.millisecondsSinceEpoch),
-              lastReviewMillis: Value(
-                result.card.lastReview?.millisecondsSinceEpoch,
-              ),
-            ),
-          );
+      await (_db.update(
+        _db.studyCards,
+      )..where((row) => row.id.equals(card.cardId))).write(
+        StudyCardsCompanion(
+          state: Value(result.card.state.value),
+          step: Value(result.card.step),
+          stability: Value(result.card.stability),
+          difficulty: Value(result.card.difficulty),
+          dueMillis: Value(result.card.due.millisecondsSinceEpoch),
+          lastReviewMillis: Value(
+            result.card.lastReview?.millisecondsSinceEpoch,
+          ),
+        ),
+      );
       await _db
           .into(_db.studyReviewLogs)
           .insert(
@@ -110,10 +111,11 @@ class StudyRepository {
   }
 
   Future<fsrs.Card> _getOrCreateCard(String poemKey) async {
-    final existing = await (_db.select(_db.studyCards)..where(
-          (row) => row.poemKey.equals(poemKey),
-        ))
-        .getSingleOrNull();
+    final existing =
+        await (_db.select(_db.studyCards)..where(
+              (row) => row.poemKey.equals(poemKey),
+            ))
+            .getSingleOrNull();
     if (existing != null) return _toCard(existing);
 
     final now = DateTime.now().toUtc();

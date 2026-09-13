@@ -73,8 +73,7 @@ Future<void> invalidateStaleCorpusSchema(File file) async {
   final probe = sqlite3.open(file.path);
   final int version;
   try {
-    version =
-        probe.select('PRAGMA user_version').single['user_version'] as int;
+    version = probe.select('PRAGMA user_version').single['user_version'] as int;
   } finally {
     probe.dispose();
   }

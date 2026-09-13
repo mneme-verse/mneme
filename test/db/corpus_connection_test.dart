@@ -49,10 +49,9 @@ void main() {
       ),
     );
     addTearDown(db.close);
-    final rows =
-        await (db.select(db.poems)
-              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
-            .get();
+    final rows = await (db.select(
+      db.poems,
+    )..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
     return [for (final row in rows) row.title];
   }
 
@@ -65,8 +64,7 @@ void main() {
   test('decompressed pack takes precedence over the previous db', () async {
     final source = File(p.join(supportDir.path, 'source.db'));
     await insertPoem(source, 'Pack poem');
-    final packDir = Directory(p.join(supportDir.path, 'corpora'))
-      ..createSync();
+    final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
     await File(
       p.join(packDir.path, 'ru.db.zst'),
     ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
@@ -86,8 +84,7 @@ void main() {
 
     final source = File(p.join(supportDir.path, 'source.db'));
     await insertPoem(source, 'Pack poem');
-    final packDir = Directory(p.join(supportDir.path, 'corpora'))
-      ..createSync();
+    final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
     await File(
       p.join(packDir.path, 'ru.db.zst'),
     ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
