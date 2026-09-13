@@ -70,3 +70,47 @@ jobs:
           name: libtranscribe-arm64
           path: /tmp/transcribe-android/**/libtranscribe.so
           if-no-files-found: error
+
+  linux-lib:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📚 Git Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: 🏗️ Configure Linux shared lib
+        run: |
+          set +e
+          cmake -S third_party/transcribe.cpp -B /tmp/transcribe-linux \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTRANSCRIBE_BUILD_SHARED=ON \
+            -DTRANSCRIBE_BUILD_TESTS=OFF \
+            -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
+            -DTRANSCRIBE_BUILD_TOOLS=OFF > /tmp/transcribe-linux-cmake.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "::error::cmake configure failed: $(grep -e 'Error' -e 'error:' /tmp/transcribe-linux-cmake.log | head -n 5 | tr '\n' '|')"
+            tail -n 30 /tmp/transcribe-linux-cmake.log
+            exit $code
+          fi
+          echo CONFIGURED
+
+      - name: 🔨 Build Linux libtranscribe
+        run: |
+          set +e
+          cmake --build /tmp/transcribe-linux -j "$(nproc)" > /tmp/transcribe-linux-build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "::error::native build failed: $(grep -e 'error:' -e 'Error [0-9]' /tmp/transcribe-linux-build.log | head -n 5 | tr '\n' '|')"
+            tail -n 30 /tmp/transcribe-linux-build.log
+            exit $code
+          fi
+          find /tmp/transcribe-linux -name 'libtranscribe.so' | head -n 3
+
+      - name: 📤 Upload Linux lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: libtranscribe-linux64
+          path: /tmp/transcribe-linux/**/libtranscribe.so
+          if-no-files-found: error

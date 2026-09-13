@@ -70,6 +70,12 @@ void main() {
       expect(bindings.streamText(session), 'stub transcript');
     });
 
+    test('candidates probe the platform path first', () {
+      final candidates = TranscribeBindings.libraryCandidates();
+      expect(candidates.first, 'libtranscribe.so');
+      expect(candidates.toSet(), hasLength(candidates.length));
+    });
+
     test('default constructor surfaces a missing library', () {
       expect(TranscribeBindings.new, throwsArgumentError);
     });

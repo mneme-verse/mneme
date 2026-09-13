@@ -1,7 +1,9 @@
 import 'dart:ffi' as ffi;
+import 'dart:io' show Platform;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:path/path.dart' as p;
 
 /// Raw Dart FFI bindings for the transcribe.cpp C API subset the app uses.
 ///
@@ -10,7 +12,7 @@ import 'package:ffi/ffi.dart';
 /// authoritative `full_text` snapshot. Everything else lives upstream in
 /// `third_party/transcribe.cpp/include/transcribe.h`.
 class TranscribeBindings {
-  /// Loads `libtranscribe.so` from the platform library path.
+  /// Loads `libtranscribe.so` from the candidate locations.
   TranscribeBindings() : this.fromLibrary(_openLibrary());
 
   /// Binds entry points from an already-opened library (tests).
@@ -129,9 +131,31 @@ class TranscribeBindings {
   late final int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<_StreamText>)
   _streamGetText;
 
-  /// Opens the platform library; throws [ArgumentError] when absent.
-  static ffi.DynamicLibrary _openLibrary() =>
-      ffi.DynamicLibrary.open('libtranscribe.so');
+  /// Opens the platform library; throws [ArgumentError] when absent from
+  /// every candidate location.
+  static ffi.DynamicLibrary _openLibrary() {
+    ArgumentError? last;
+    for (final candidate in libraryCandidates()) {
+      try {
+        return ffi.DynamicLibrary.open(candidate);
+        // A missing candidate reports as ArgumentError; try the next one
+        // instead of failing on the first miss.
+        // ignore: avoid_catching_errors
+      } on ArgumentError catch (e) {
+        last = e;
+      }
+    }
+    throw last ?? ArgumentError('no library candidates');
+  }
+
+  /// Library locations in probe order: the platform path first, then the
+  /// Flutter Linux bundle `lib` directory beside the executable.
+  static List<String> libraryCandidates() {
+    const base = 'libtranscribe.so';
+    if (!Platform.isLinux) return [base];
+    final bundleLib = p.join(p.dirname(Platform.resolvedExecutable), 'lib');
+    return [base, p.join(bundleLib, base)];
+  }
 
   /// Library version string, borrowed storage (do not free).
   String version() => _version().toDartString();
