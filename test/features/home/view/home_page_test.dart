@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:bloc_test/bloc_test.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +11,7 @@ import 'package:mneme/features/home/view/home_page.dart';
 import 'package:mneme/l10n/gen/app_localizations.dart';
 import 'package:mneme/repository/poetry_repository.dart';
 import 'package:mneme/repository/study_repository.dart';
+import 'package:mneme/resources/resource_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockHomeCubit extends MockCubit<HomeState> implements HomeCubit {}
@@ -16,16 +20,23 @@ class MockPoetryRepository extends Mock implements PoetryRepository {}
 
 class MockStudyRepository extends Mock implements StudyRepository {}
 
+class MockResourceRepository extends Mock implements ResourceRepository {}
+
 void main() {
   group('HomePage', () {
     late HomeCubit homeCubit;
     late PoetryRepository poetryRepository;
     late StudyRepository studyRepository;
+    late ResourceRepository resources;
 
     setUp(() {
       homeCubit = MockHomeCubit();
       poetryRepository = MockPoetryRepository();
       studyRepository = MockStudyRepository();
+      resources = MockResourceRepository();
+      when(
+        () => resources.modelFile(any()),
+      ).thenReturn(File('model.gguf'));
       when(() => homeCubit.state).thenReturn(HomeLoading());
       // Mock fetchAuthors to avoid null errors if called in initState/builder
       when(
@@ -38,6 +49,7 @@ void main() {
         providers: [
           RepositoryProvider.value(value: poetryRepository),
           RepositoryProvider.value(value: studyRepository),
+          RepositoryProvider.value(value: resources),
         ],
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -108,6 +120,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Review'), findsOneWidget);
     });
+    testWidgets('taps mic button', (tester) async {
+      final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
+      when(() => homeCubit.state).thenReturn(HomeLoaded(authors));
+      await tester.pumpWidget(buildSubject());
+
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.mic));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.mic), findsWidgets);
+    });
+
     testWidgets('taps author item', (tester) async {
       final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
       when(() => homeCubit.state).thenReturn(HomeLoaded(authors));

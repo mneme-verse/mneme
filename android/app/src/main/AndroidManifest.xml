@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- First-run corpus/model downloads and update checks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Live recitation audio capture for offline speech recognition. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="${appName}"
         android:name="${applicationName}"

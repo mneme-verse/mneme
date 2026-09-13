@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mneme/features/author/view/author_page.dart';
 import 'package:mneme/features/home/bloc/home_cubit.dart';
+import 'package:mneme/features/recitation/view/recitation_page.dart';
 import 'package:mneme/features/search/view/search_page.dart';
 import 'package:mneme/features/study/view/study_page.dart';
 import 'package:mneme/l10n/l10n.dart';
@@ -95,6 +96,10 @@ class _HomeViewState extends State<HomeView> {
           IconButton(
             icon: const Icon(Icons.school),
             onPressed: () => Navigator.of(context).push(StudyPage.route()),
+          ),
+          IconButton(
+            icon: const Icon(Icons.mic),
+            onPressed: () => Navigator.of(context).push(RecitationPage.route()),
           ),
         ],
       ),
