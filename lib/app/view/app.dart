@@ -8,6 +8,7 @@ import 'package:mneme/features/onboarding/view/onboarding_page.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
+import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +28,7 @@ class App extends StatefulWidget {
     required this.resources,
     required this.manifestClient,
     this.prefs,
+    this.speechModel,
     super.key,
   });
 
@@ -36,6 +38,11 @@ class App extends StatefulWidget {
 
   /// Injectable preferences; defaults to [SharedPreferences.getInstance].
   final Future<SharedPreferences>? prefs;
+
+  /// Speech model installed during onboarding; defaults to the standard
+  /// locked model. Flavors and tests can select another locked model
+  /// without changing the install flow.
+  final LockedResource? speechModel;
 
   @override
   State<App> createState() => _AppState();
@@ -108,6 +115,7 @@ class _AppState extends State<App> {
         _onboarding => OnboardingPage(
           resources: widget.resources,
           manifestClient: widget.manifestClient,
+          speechModel: widget.speechModel,
           onCompleted: _onOnboardingCompleted,
         ),
         _ => RepositoryProvider.value(

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/native.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fsrs/fsrs.dart' as fsrs;
 import 'package:mneme/db/connection/study_connection.dart';
@@ -9,6 +10,8 @@ import 'package:mneme/repository/study_repository.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   late StudyDatabase db;
   late StudyRepository repository;
 
@@ -153,6 +156,34 @@ void main() {
       expect(history.first.rating, fsrs.Rating.good);
       expect(history.last.rating, fsrs.Rating.again);
     });
+  });
+
+  test('repository works with the default scheduler', () async {
+    final card = await StudyRepository(db).getOrCreateCard('raven');
+    expect(card.state, fsrs.State.learning);
+  });
+
+  test('study connection falls back to the documents directory', () async {
+    final docs = Directory.systemTemp.createTempSync('mneme-study-docs');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => docs.path,
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            const MethodChannel('plugins.flutter.io/path_provider'),
+            null,
+          ),
+    );
+
+    final opened = StudyDatabase(openStudyConnection());
+    addTearDown(opened.close);
+    await opened.customSelect('SELECT 1').get();
+
+    expect(File(p.join(docs.path, 'study.db')).existsSync(), isTrue);
   });
 
   test('study connection opens the explicit study file', () async {

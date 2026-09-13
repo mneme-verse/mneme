@@ -1,11 +1,17 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mneme/app/app.dart';
 import 'package:mneme/db/database.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
+import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,6 +49,67 @@ void main() {
       expect(harness.openedLanguages, ['en']);
       expect(find.text('Select Language'), findsNothing);
     });
+
+    testWidgets('installs resources and opens the database on completion', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final packBytes = Uint8List.fromList(
+        List<int>.generate(512, (i) => i % 251),
+      );
+      final modelBytes = Uint8List.fromList(
+        List<int>.generate(256, (i) => 255 - (i % 251)),
+      );
+      final model = LockedResource(
+        id: 'fake-model.gguf',
+        url: 'https://example.test/fake-model.gguf',
+        sha256: sha256.convert(modelBytes).toString(),
+        sizeBytes: modelBytes.length,
+      );
+      final client = MockClient((request) async {
+        final url = request.url.toString();
+        if (url == 'https://example.test/manifest.json') {
+          return http.Response(
+            jsonEncode({
+              'en': {
+                'file': 'en.db.zst',
+                'sha256': sha256.convert(packBytes).toString(),
+                'size': packBytes.length,
+                'version': '1.0+2',
+                'schema_version': 2,
+              },
+            }),
+            200,
+          );
+        }
+        if (url == 'https://example.test/en.db.zst') {
+          return http.Response.bytes(packBytes, 200);
+        }
+        if (url == model.url) {
+          return http.Response.bytes(modelBytes, 200);
+        }
+        return http.Response('not found', 404);
+      });
+      final harness = _AppHarness();
+
+      await tester.pumpWidget(
+        harness.build(speechModel: model, client: client),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('English'));
+      // Installs use real filesystem I/O, which needs real time between
+      // frames inside widget tests.
+      for (var i = 0; i < 30 && harness.openedLanguages.isEmpty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(harness.openedLanguages, ['en']);
+      expect(find.text('Select Language'), findsNothing);
+    });
   });
 }
 
@@ -50,7 +117,11 @@ void main() {
 class _AppHarness {
   final openedLanguages = <String>[];
 
-  Widget build() {
+  Widget build({
+    LockedResource? speechModel,
+    http.Client? client,
+    String manifestUrl = 'https://example.test/manifest.json',
+  }) {
     return App(
       databaseOpener: (language) {
         final db = AppDatabase(NativeDatabase.memory());
@@ -60,10 +131,13 @@ class _AppHarness {
       resources: ResourceRepository(
         modelDir: Directory.systemTemp.createTempSync('app-models'),
         corpusDir: Directory.systemTemp.createTempSync('app-corpora'),
+        client: client,
       ),
       manifestClient: CorpusManifestClient(
-        manifestUrl: Uri.parse('https://example.test/manifest.json'),
+        client: client,
+        manifestUrl: Uri.parse(manifestUrl),
       ),
+      speechModel: speechModel,
       prefs: SharedPreferences.getInstance(),
     );
   }

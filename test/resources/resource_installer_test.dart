@@ -4,6 +4,9 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:mneme/resources/resource_installer.dart';
+import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 
 void main() {
@@ -236,5 +239,108 @@ void main() {
     } finally {
       await replacementServer.close(force: true);
     }
+  });
+  test('exceptions describe the failed resource', () {
+    expect(
+      const InstallCanceledException('ru.db.zst').toString(),
+      contains('ru.db.zst'),
+    );
+    expect(
+      const HashMismatchException('ru.db.zst', 'abc').toString(),
+      contains('ru.db.zst'),
+    );
+  });
+
+  test('size mismatch fails without installing', () async {
+    serve(bytes: payload);
+    await expectLater(
+      repository.installCorpusPack(
+        'fixture.bin',
+        serverUrl('fixture.bin'),
+        shaOf(payload),
+        sizeBytes: payload.length + 1,
+      ),
+      throwsA(isA<HashMismatchException>()),
+    );
+    expect(
+      File('${tempDir.path}/corpora/fixture.bin').existsSync(),
+      isFalse,
+    );
+  });
+
+  test('stale backup files are removed on install', () async {
+    final backup = File('${tempDir.path}/corpora/fixture.bin.bak')
+      ..createSync(recursive: true)
+      ..writeAsBytesSync([1, 2, 3]);
+    serve(bytes: payload);
+    await repository.installCorpusPack(
+      'fixture.bin',
+      serverUrl('fixture.bin'),
+      shaOf(payload),
+    );
+    expect(backup.existsSync(), isFalse);
+  });
+
+  test('uninstall removes destination and leftovers', () async {
+    final dir = Directory('${tempDir.path}/solo')..createSync();
+    final installer = ResourceInstaller(
+      client: http.Client(),
+      destinationDir: dir,
+    );
+    addTearDown(() => installer.uninstall('x.bin'));
+    final destination = File('${dir.path}/x.bin')..writeAsStringSync('old');
+    File('${dir.path}/x.bin.part').writeAsStringSync('partial');
+    File('${dir.path}/x.bin.bak').writeAsStringSync('backup');
+
+    await installer.uninstall('x.bin');
+
+    expect(destination.existsSync(), isFalse);
+    expect(File('${dir.path}/x.bin.part').existsSync(), isFalse);
+    expect(File('${dir.path}/x.bin.bak').existsSync(), isFalse);
+    await installer.uninstall('x.bin');
+  });
+
+  test('dispose cancels in-flight installs', () async {
+    final local = ResourceRepository(
+      modelDir: Directory('${tempDir.path}/models2')..createSync(),
+      corpusDir: Directory('${tempDir.path}/corpora2')..createSync(),
+    );
+    serve(bytes: payload, delayMs: 500);
+    final pending = local.installCorpusPack(
+      'slow.bin',
+      serverUrl('slow.bin'),
+      shaOf(payload),
+    );
+    for (var i = 0; i < 100; i++) {
+      if (local.stateOf('slow.bin').phase == ResourcePhase.downloading) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    await local.dispose();
+    await expectLater(
+      pending,
+      throwsA(isA<InstallCanceledException>()),
+    );
+  });
+
+  test('speech model install state is reported', () async {
+    serve(bytes: payload);
+    final model = LockedResource(
+      id: 'fake-model.gguf',
+      url: serverUrl('fake-model.gguf'),
+      sha256: shaOf(payload),
+      sizeBytes: payload.length,
+    );
+    expect(await repository.isSpeechModelInstalled(model), isFalse);
+    await repository.installSpeechModel(model);
+    expect(await repository.isSpeechModelInstalled(model), isTrue);
+    expect(
+      const ResourceState(
+        id: 'x',
+        phase: ResourcePhase.downloading,
+      ).copyWith(receivedBytes: 3).phase,
+      ResourcePhase.downloading,
+    );
   });
 }

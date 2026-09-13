@@ -119,6 +119,67 @@ void main() {
       await tester.tap(find.text('Choose a different language'));
       verify(() => onboardingCubit.resetToLanguageSelection()).called(1);
     });
+
+    testWidgets('shows the model label while the model downloads', (
+      tester,
+    ) async {
+      const installing = OnboardingState(
+        phase: OnboardingPhase.installing,
+        language: 'ru',
+        resource: OnboardingResource.speechModel,
+        receivedBytes: 10,
+        totalBytes: 100,
+      );
+      whenListen(
+        onboardingCubit,
+        Stream.value(installing),
+        initialState: installing,
+      );
+      await tester.pumpWidget(buildSubject());
+      expect(find.text('Downloading speech model'), findsOneWidget);
+    });
+
+    testWidgets('shows progress while completing', (tester) async {
+      const completed = OnboardingState(
+        phase: OnboardingPhase.completed,
+        language: 'ru',
+      );
+      whenListen(
+        onboardingCubit,
+        Stream.value(completed),
+        initialState: completed,
+      );
+      await tester.pumpWidget(buildSubject());
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('notifies when onboarding completes', (tester) async {
+      String? completedWith;
+      whenListen(
+        onboardingCubit,
+        Stream.value(
+          const OnboardingState(
+            phase: OnboardingPhase.completed,
+            language: 'ru',
+          ),
+        ),
+        initialState: const OnboardingState.languageSelection(),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: BlocProvider.value(
+            value: onboardingCubit,
+            child: OnboardingView(
+              onCompleted: (language) => completedWith = language,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(completedWith, 'ru');
+    });
   });
 
   group('OnboardingPage', () {
@@ -142,6 +203,29 @@ void main() {
         manifestClient: manifestClient,
       );
       expect(route, isA<MaterialPageRoute<void>>());
+    });
+
+    testWidgets('route shows onboarding when pushed', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                OnboardingPage.route(
+                  resources: resources,
+                  manifestClient: manifestClient,
+                ),
+              ),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      expect(find.text('Select Language'), findsOneWidget);
     });
   });
 }

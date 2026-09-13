@@ -127,27 +127,15 @@ class ResourceInstaller {
         throw HashMismatchException(id, actualSha256);
       }
 
-      // Atomic cutover: stage the previous file aside so a crash or a
-      // failed rename never loses the last known-good resource.
-      final backup = File('${destination.path}.bak');
-      if (backup.existsSync()) {
-        backup.deleteSync();
+      // Atomic cutover: rename(2) replaces the destination atomically on
+      // the supported POSIX targets (Android, Linux), so a crash can
+      // leave the old or the new file behind, never a missing resource.
+      // A stale backup from a previous version is removed if present.
+      final staleBackup = File('${destination.path}.bak');
+      if (staleBackup.existsSync()) {
+        staleBackup.deleteSync();
       }
-      final hadDestination = destination.existsSync();
-      if (hadDestination) {
-        destination.renameSync(backup.path);
-      }
-      try {
-        await partial.rename(destination.path);
-      } catch (_) {
-        if (hadDestination && !destination.existsSync()) {
-          backup.renameSync(destination.path);
-        }
-        rethrow;
-      }
-      if (backup.existsSync()) {
-        backup.deleteSync();
-      }
+      await partial.rename(destination.path);
       return destination;
     } catch (_) {
       await sink.close();

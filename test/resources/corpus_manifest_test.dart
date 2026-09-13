@@ -56,4 +56,36 @@ void main() {
       );
     }
   });
+
+  test('malformed manifests fail with a typed exception', () async {
+    final badManifests = <String, Object>{
+      'not JSON': 'this is not json',
+      'missing entry': jsonEncode({'en': entry(file: 'en.db.zst')}),
+      'bad schema': jsonEncode({
+        'ru': {...entry(file: 'ru.db.zst'), 'schema_version': 1},
+      }),
+      'bad hash': jsonEncode({
+        'ru': {...entry(file: 'ru.db.zst'), 'sha256': 'xyz'},
+      }),
+      'bad size': jsonEncode({
+        'ru': {...entry(file: 'ru.db.zst'), 'size': 0},
+      }),
+    };
+    for (final body in badManifests.values) {
+      final client = CorpusManifestClient(
+        client: MockClient((_) async => http.Response(body.toString(), 200)),
+      );
+      await expectLater(
+        client.packFor('ru'),
+        throwsA(isA<CorpusManifestException>()),
+      );
+    }
+  });
+
+  test('manifest exception describes the problem', () {
+    expect(
+      const CorpusManifestException('gone').toString(),
+      contains('gone'),
+    );
+  });
 }

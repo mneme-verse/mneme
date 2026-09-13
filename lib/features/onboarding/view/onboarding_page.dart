@@ -3,12 +3,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mneme/features/onboarding/cubit/onboarding_cubit.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
+import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 
 class OnboardingPage extends StatelessWidget {
   const OnboardingPage({
     required this.resources,
     required this.manifestClient,
+    this.speechModel,
     this.onCompleted,
     super.key,
   });
@@ -19,18 +21,24 @@ class OnboardingPage extends StatelessWidget {
   /// Client for the published corpus manifest.
   final CorpusManifestClient manifestClient;
 
+  /// Speech model installed alongside the corpus; defaults to
+  /// [defaultSpeechModel] inside the cubit.
+  final LockedResource? speechModel;
+
   /// Invoked with the installed language when onboarding completes.
   final void Function(String language)? onCompleted;
 
   static Route<void> route({
     required ResourceRepository resources,
     required CorpusManifestClient manifestClient,
+    LockedResource? speechModel,
     void Function(String language)? onCompleted,
   }) {
     return MaterialPageRoute<void>(
       builder: (_) => OnboardingPage(
         resources: resources,
         manifestClient: manifestClient,
+        speechModel: speechModel,
         onCompleted: onCompleted,
       ),
     );
@@ -42,6 +50,7 @@ class OnboardingPage extends StatelessWidget {
       create: (_) => OnboardingCubit(
         resources: resources,
         manifestClient: manifestClient,
+        speechModel: speechModel,
       ),
       child: OnboardingView(onCompleted: onCompleted),
     );

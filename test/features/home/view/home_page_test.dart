@@ -191,4 +191,10 @@ void main() {
       },
     );
   });
+  group('HomePage', () {
+    test('route builds the home page', () {
+      final route = HomePage.route();
+      expect(route, isA<MaterialPageRoute<void>>());
+    });
+  });
 }
