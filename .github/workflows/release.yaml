@@ -141,12 +141,31 @@ jobs:
         run: flutter pub get
 
       - name: 🌳 Build corpus pack
-        run: >
-          dart run tool/builder.dart
-          --languages=${{ inputs.corpus_language }}
-          --clean-after=poetree,db
-
+        run: |
+          set +e
+          dart run tool/builder.dart --languages=${{ inputs.corpus_language }} --clean-after=poetree,db > /tmp/builder.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "::error::builder failed: $(grep -e '❌' -e 'Error' -e 'Exception' /tmp/builder.log | head -n 4 | tr '\n' '|')"
+            tail -n 30 /tmp/builder.log
+            exit $code
+          fi
+          count=$(ls assets/database/*.db.zst 2>/dev/null | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::builder produced no packs: $(grep -e '❌' -e 'Downloaded' -e 'download' /tmp/builder.log | head -n 6 | tr '\n' '|')"
+            tail -n 30 /tmp/builder.log
+            exit 1
+          fi
+          ls assets/database/
       - name: 📤 Publish data release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dart run tool/publish_data.dart
+        run: |
+          set +e
+          dart run tool/publish_data.dart > /tmp/publish.log 2>&1
+          code=$?
+          tail -n 25 /tmp/publish.log
+          if [ $code -ne 0 ]; then
+            echo "::error::publish failed: $(tail -n 4 /tmp/publish.log | tr '\n' '|')"
+            exit $code
+          fi

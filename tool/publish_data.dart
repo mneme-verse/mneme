@@ -233,6 +233,7 @@ class DataPublisher {
     if (view.exitCode != 0) return false;
     return (view.stdout as String).split('\n').contains('manifest.json');
   }
+
   /// malformed, or not a JSON object. Callers must abort, never fall
   /// back, so a transient failure cannot clobber other languages.
   Future<Map<String, dynamic>> _readPublishedManifest(

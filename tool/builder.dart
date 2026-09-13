@@ -309,12 +309,16 @@ class PoeTreeBuilder {
     );
   }
 
-  /// Download and extract a single corpus
+  /// Download and extract a single corpus.
+  ///
+  /// [waitForRetry] backs off between transient failures; tests inject an
+  /// immediate future to avoid real delays.
   Future<void> downloadAndExtractCorpus(
     String lang,
     String zenodoBaseUrl,
-    Directory tempDir,
-  ) async {
+    Directory tempDir, {
+    Future<void> Function(Duration)? waitForRetry,
+  }) async {
     final langDir = Directory(path.join(tempDir.path, lang));
     final zipFile = File(path.join(tempDir.path, '$lang.zip'));
 
@@ -345,30 +349,47 @@ class PoeTreeBuilder {
       }
     }
 
-    // Download and extract
+    // Download and extract, retrying transient failures (Zenodo
+    // occasionally answers large files with 504). A missing archive
+    // (404) fails fast instead of burning the retry budget.
     final zipUrl = '$zenodoBaseUrl/$lang.zip';
     print('  ⬇️  Downloading $lang.zip...');
 
-    try {
-      final response = await client.get(Uri.parse(zipUrl));
-      if (response.statusCode == 200) {
-        await zipFile.writeAsBytes(response.bodyBytes);
-        final sizeMB = response.bodyBytes.length / 1024 / 1024;
+    const maxAttempts = 5;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        final response = await client.get(Uri.parse(zipUrl));
+        if (response.statusCode == 200) {
+          await zipFile.writeAsBytes(response.bodyBytes);
+          final sizeMB = response.bodyBytes.length / 1024 / 1024;
+          print(
+            '     ✓ [$lang] Downloaded ${sizeMB.toStringAsFixed(1)} MB',
+          );
+
+          // Extract zip file
+          print('     📦 [$lang] Extracting...');
+          await zipExtractor(zipFile.path, tempDir.path);
+          print('     ✓ [$lang] Extracted');
+
+          // Keep zip file for future use
+          return;
+        }
+        if (response.statusCode == 404 || attempt == maxAttempts) {
+          print('     ❌ [$lang] Failed: HTTP ${response.statusCode}');
+          return;
+        }
         print(
-          '     ✓ [$lang] Downloaded ${sizeMB.toStringAsFixed(1)} MB',
+          '     ⚠️  [$lang] HTTP ${response.statusCode}, '
+          'retrying ($attempt/$maxAttempts)...',
         );
-
-        // Extract zip file
-        print('     📦 [$lang] Extracting...');
-        await zipExtractor(zipFile.path, tempDir.path);
-        print('     ✓ [$lang] Extracted');
-
-        // Keep zip file for future use
-      } else {
-        print('     ❌ [$lang] Failed: HTTP ${response.statusCode}');
+      } catch (e) {
+        if (attempt == maxAttempts) {
+          print('     ❌ [$lang] Error: $e');
+          return;
+        }
+        print('     ⚠️  [$lang] Error: $e ($attempt/$maxAttempts)...');
       }
-    } catch (e) {
-      print('     ❌ [$lang] Error: $e');
+      await (waitForRetry ?? Future.delayed)(Duration(seconds: 15 * attempt));
     }
   }
 
