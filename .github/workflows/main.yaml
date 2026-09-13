@@ -39,3 +39,54 @@ jobs:
         **/*.yaml
         **/*.yml
       modified_files_only: false
+
+  # Test-builds the production APK on every PR so Gradle, Kotlin, R8 and
+  # signing-config breakage gates the PR instead of the release tag. Uses
+  # an ephemeral debug keystore and never publishes.
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📚 Git Checkout
+        uses: actions/checkout@v7
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: '3.47.x'
+          channel: stable
+          cache: true
+
+      - name: 📦 Install Dependencies
+        run: flutter pub get
+
+      - name: 🔑 Ephemeral debug keystore
+        run: |
+          keytool -genkeypair \
+            -keystore /tmp/mneme-debug.keystore -alias mneme-debug \
+            -keyalg RSA -keysize 2048 -validity 90 \
+            -storepass mneme-debug -keypass mneme-debug \
+            -dname 'CN=Mneme ephemeral debug, OU=dev, O=mneme-verse'
+
+      - name: 🏗️ Build production APK
+        env:
+          ANDROID_KEYSTORE_PATH: /tmp/mneme-debug.keystore
+          ANDROID_KEYSTORE_ALIAS: mneme-debug
+          ANDROID_KEYSTORE_PASSWORD: mneme-debug
+          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: mneme-debug
+        run: |
+          set +e
+          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 > /tmp/apk.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            detail=$(grep -A10 'What went wrong' /tmp/apk.log | head -n 25 | tr '\n' '|')
+            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' /tmp/apk.log | head -n 5 | tr '\n' '|') detail: $detail"
+            tail -n 40 /tmp/apk.log
+            exit $code
+          fi
+          ls -la build/app/outputs/flutter-apk/
