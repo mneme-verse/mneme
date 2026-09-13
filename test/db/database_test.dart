@@ -1,5 +1,5 @@
 // cspell:disable
-import 'package:drift/drift.dart' hide isNotNull;
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/db/database.dart';
@@ -35,6 +35,29 @@ void main() {
       final results = await repo.searchPoems('Raven', ['en']);
       expect(results, hasLength(1));
       expect(results.first.title, 'The Raven');
+    });
+
+    test('Prefix search matches a partial last word', () async {
+      final results = await repo.searchPoems('Rav', ['en']);
+      expect(results.map((poem) => poem.title), contains('The Raven'));
+    });
+
+    test('Poem lookups resolve by id and key', () async {
+      expect((await repo.getPoemById(1))?.title, 'The Raven');
+      expect(
+        (await repo.getPoemByKey('poetree:en:raven'))?.title,
+        'The Raven',
+      );
+      expect(await repo.getPoemById(999), isNull);
+      expect(await repo.getPoemByKey('poetree:en:missing'), isNull);
+    });
+
+    test('Author poems list every linked poem', () async {
+      final poems = await repo.getPoemsByAuthor('Edgar Allan Poe');
+      expect(
+        poems.map((poem) => poem.title),
+        containsAll(['The Raven', 'Annabel Lee']),
+      );
     });
 
     test('FTS search works for Russian content', () async {

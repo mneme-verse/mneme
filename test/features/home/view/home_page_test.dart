@@ -7,20 +7,25 @@ import 'package:mneme/features/home/bloc/home_cubit.dart';
 import 'package:mneme/features/home/view/home_page.dart';
 import 'package:mneme/l10n/gen/app_localizations.dart';
 import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/repository/study_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockHomeCubit extends MockCubit<HomeState> implements HomeCubit {}
 
 class MockPoetryRepository extends Mock implements PoetryRepository {}
 
+class MockStudyRepository extends Mock implements StudyRepository {}
+
 void main() {
   group('HomePage', () {
     late HomeCubit homeCubit;
     late PoetryRepository poetryRepository;
+    late StudyRepository studyRepository;
 
     setUp(() {
       homeCubit = MockHomeCubit();
       poetryRepository = MockPoetryRepository();
+      studyRepository = MockStudyRepository();
       when(() => homeCubit.state).thenReturn(HomeLoading());
       // Mock fetchAuthors to avoid null errors if called in initState/builder
       when(
@@ -29,14 +34,17 @@ void main() {
     });
 
     Widget buildSubject() {
-      return RepositoryProvider.value(
-        value: poetryRepository,
+      return MultiRepositoryProvider(
+        providers: [
+          RepositoryProvider.value(value: poetryRepository),
+          RepositoryProvider.value(value: studyRepository),
+        ],
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: BlocProvider.value(
             value: homeCubit,
-            child: const HomeView(),
+            child: const HomeView(language: 'en'),
           ),
         ),
       );
@@ -90,15 +98,14 @@ void main() {
       await tester.pump();
     });
 
-    testWidgets('taps settings button', (tester) async {
+    testWidgets('taps study button', (tester) async {
       final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
       when(() => homeCubit.state).thenReturn(HomeLoaded(authors));
       await tester.pumpWidget(buildSubject());
 
-      await tester.tap(find.widgetWithIcon(IconButton, Icons.settings));
+      await tester.tap(find.widgetWithIcon(IconButton, Icons.school));
       await tester.pump();
     });
-
     testWidgets('taps author item', (tester) async {
       final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
       when(() => homeCubit.state).thenReturn(HomeLoaded(authors));
@@ -140,7 +147,10 @@ void main() {
                 height: 300,
                 child: BlocProvider.value(
                   value: homeCubit,
-                  child: HomeView(scrollController: scrollController),
+                  child: HomeView(
+                    language: 'en',
+                    scrollController: scrollController,
+                  ),
                 ),
               ),
             ),
@@ -176,7 +186,10 @@ void main() {
               supportedLocales: AppLocalizations.supportedLocales,
               home: BlocProvider.value(
                 value: homeCubit,
-                child: HomeView(scrollController: scrollController),
+                child: HomeView(
+                  language: 'en',
+                  scrollController: scrollController,
+                ),
               ),
             ),
           ),
@@ -193,7 +206,7 @@ void main() {
   });
   group('HomePage', () {
     test('route builds the home page', () {
-      final route = HomePage.route();
+      final route = HomePage.route(language: 'en');
       expect(route, isA<MaterialPageRoute<void>>());
     });
   });

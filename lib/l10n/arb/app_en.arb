@@ -64,5 +64,41 @@
     "chooseDifferentLanguage": "Choose a different language",
     "@chooseDifferentLanguage": {
         "description": "Return to language selection after failure"
+    },
+    "search": "Search",
+    "@search": {
+        "description": "Search action title"
+    },
+    "searchHint": "Search poems",
+    "@searchHint": {
+        "description": "Hint inside the poem search field"
+    },
+    "review": "Review",
+    "@review": {
+        "description": "Study review page title"
+    },
+    "nothingDue": "Nothing due",
+    "@nothingDue": {
+        "description": "Empty study queue message"
+    },
+    "gradeAgain": "Again",
+    "@gradeAgain": {
+        "description": "FSRS again rating button"
+    },
+    "gradeHard": "Hard",
+    "@gradeHard": {
+        "description": "FSRS hard rating button"
+    },
+    "gradeGood": "Good",
+    "@gradeGood": {
+        "description": "FSRS good rating button"
+    },
+    "gradeEasy": "Easy",
+    "@gradeEasy": {
+        "description": "FSRS easy rating button"
+    },
+    "poemNotFound": "Poem not found",
+    "@poemNotFound": {
+        "description": "Missing poem message in reader"
     }
 }

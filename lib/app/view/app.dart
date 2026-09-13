@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mneme/db/connection/study_connection.dart';
 import 'package:mneme/db/database.dart';
+import 'package:mneme/db/study_database.dart';
 import 'package:mneme/features/home/view/home_page.dart';
 import 'package:mneme/features/onboarding/view/onboarding_page.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/repository/study_repository.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
@@ -54,6 +57,8 @@ class _AppState extends State<App> {
 
   String _mode = _loading;
   AppDatabase? _database;
+  StudyDatabase? _studyDatabase;
+  late String _language;
 
   @override
   void initState() {
@@ -99,6 +104,8 @@ class _AppState extends State<App> {
     setState(() {
       unawaited(_database?.close() ?? Future<void>.value());
       _database = widget.databaseOpener(language);
+      _studyDatabase ??= StudyDatabase(openStudyConnection());
+      _language = language;
       _mode = 'home';
     });
   }
@@ -108,10 +115,12 @@ class _AppState extends State<App> {
   }
 
   PoetryRepository get _poetryRepository => PoetryRepository(_database!);
+  StudyRepository get _studyRepository => StudyRepository(_studyDatabase!);
 
   @override
   void dispose() {
     unawaited(_database?.close() ?? Future<void>.value());
+    unawaited(_studyDatabase?.close() ?? Future<void>.value());
     super.dispose();
   }
 
@@ -136,9 +145,12 @@ class _AppState extends State<App> {
           speechModel: widget.speechModel,
           onCompleted: _onOnboardingCompleted,
         ),
-        _ => RepositoryProvider.value(
-          value: _poetryRepository,
-          child: const HomePage(),
+        _ => MultiRepositoryProvider(
+          providers: [
+            RepositoryProvider.value(value: _poetryRepository),
+            RepositoryProvider.value(value: _studyRepository),
+          ],
+          child: HomePage(language: _language),
         ),
       },
     );
