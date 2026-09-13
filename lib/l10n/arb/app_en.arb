@@ -100,5 +100,17 @@
     "poemNotFound": "Poem not found",
     "@poemNotFound": {
         "description": "Missing poem message in reader"
+    },
+    "recite": "Recite",
+    "@recite": {
+        "description": "Start reciting button"
+    },
+    "listening": "Listening…",
+    "@listening": {
+        "description": "Live recitation indicator"
+    },
+    "stop": "Stop",
+    "@stop": {
+        "description": "Stop recitation button"
     }
 }

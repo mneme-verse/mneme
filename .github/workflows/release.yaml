@@ -44,7 +44,31 @@ jobs:
     steps:
       - name: 📚 Git Checkout
         uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 🗣️ Build transcribe.cpp for arm64
+        run: |
+          sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-24" 2>&1 | tail -n 1
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
+          cmake -S third_party/transcribe.cpp -B /tmp/transcribe-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-24 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTRANSCRIBE_BUILD_SHARED=ON \
+            -DTRANSCRIBE_BUILD_TESTS=OFF \
+            -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
+            -DTRANSCRIBE_BUILD_TOOLS=OFF > /tmp/transcribe-cmake.log 2>&1
+          cmake --build /tmp/transcribe-android -j "$(nproc)" > /tmp/transcribe-build.log 2>&1
+          lib=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
+          test -n "$lib" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp "$lib" android/app/src/main/jniLibs/arm64-v8a/
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
         with:

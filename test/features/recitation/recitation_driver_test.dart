@@ -1,0 +1,135 @@
+import 'dart:async';
+import 'dart:ffi' as ffi;
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mneme/features/recitation/recitation_driver.dart';
+import 'package:mneme/recitation/audio/audio_input.dart';
+import 'package:mneme/recitation/engine/transcribe_bindings.dart';
+import 'package:mneme/recitation/engine/transcribe_engine.dart';
+import 'package:mocktail/mocktail.dart';
+
+class MockBindings extends Mock implements TranscribeBindings {}
+
+/// Scripted microphone: the test pushes PCM chunks by hand.
+class FakeAudioInput implements AudioInput {
+  /// Chunk stream under test control.
+  final StreamController<Uint8List> controller = StreamController<Uint8List>();
+
+  /// Permission answer.
+  bool permission = true;
+
+  /// Stop call count.
+  int stops = 0;
+
+  /// Whether dispose ran.
+  bool disposed = false;
+
+  /// Pushes one PCM16 chunk into the take.
+  void pushChunk(Uint8List chunk) => controller.add(chunk);
+
+  @override
+  Future<bool> ensurePermission() async => permission;
+
+  @override
+  Future<Stream<Uint8List>> startPcm16() async => controller.stream;
+
+  @override
+  Future<void> stop() async {
+    stops++;
+  }
+
+  @override
+  void dispose() {
+    disposed = true;
+    unawaited(controller.close());
+  }
+}
+
+void main() {
+  late MockBindings bindings;
+  late FakeAudioInput audio;
+  late List<String> transcripts;
+
+  setUp(() {
+    bindings = MockBindings();
+    audio = FakeAudioInput();
+    transcripts = [];
+    registerFallbackValue(ffi.Pointer<ffi.Void>.fromAddress(0));
+    registerFallbackValue(Float32List(0));
+    registerFallbackValue((0, ffi.Pointer<ffi.Void>.fromAddress(0)));
+    when(
+      () => bindings.openSession(any()),
+    ).thenReturn((0, ffi.Pointer<ffi.Void>.fromAddress(1)));
+    when(() => bindings.streamBegin(any())).thenReturn(0);
+    when(() => bindings.streamFeed(any(), any())).thenReturn(0);
+    when(() => bindings.streamFinalize(any())).thenReturn(0);
+    when(() => bindings.streamText(any())).thenReturn('heard words');
+  });
+
+  RecitationDriver openDriver() => RecitationDriver(
+    modelPath: 'model.gguf',
+    onTranscript: transcripts.add,
+    audio: audio,
+    openEngine: (path) => TranscribeEngine(path, open: () => bindings),
+  );
+
+  /// Little-endian PCM16 bytes for [samples].
+  Uint8List pcm16(List<int> samples) {
+    final bytes = Uint8List(samples.length * 2);
+    final data = ByteData.sublistView(bytes);
+    for (var i = 0; i < samples.length; i++) {
+      data.setInt16(i * 2, samples[i], Endian.little);
+    }
+    return bytes;
+  }
+
+  group('RecitationDriver', () {
+    test('chunks flow from microphone to transcript', () async {
+      final driver = openDriver();
+      await driver.start();
+      expect(driver.isListening, isTrue);
+      audio.pushChunk(pcm16([0, 32767, -32768, 1000]));
+      await Future<void>.delayed(Duration.zero);
+      expect(transcripts, ['heard words']);
+      verify(() => bindings.streamFeed(any(), any())).called(1);
+      await driver.stop();
+      expect(driver.isListening, isFalse);
+      expect(transcripts.last, 'heard words');
+      verify(() => bindings.streamFinalize(any())).called(1);
+      await driver.dispose();
+      expect(audio.disposed, isTrue);
+    });
+
+    test('denied permission aborts before opening the engine', () async {
+      audio.permission = false;
+      final driver = openDriver();
+      await expectLater(
+        driver.start(),
+        throwsA(isA<RecitationPermissionDenied>()),
+      );
+      expect(driver.isListening, isFalse);
+      verifyNever(() => bindings.streamBegin(any()));
+      await driver.dispose();
+    });
+
+    test('stop while idle is a no-op', () async {
+      final driver = openDriver();
+      await driver.stop();
+      verifyNever(() => bindings.streamFinalize(any()));
+      await driver.dispose();
+    });
+
+    test('failed begin releases the engine', () async {
+      when(() => bindings.streamBegin(any())).thenReturn(8);
+      when(() => bindings.statusString(any())).thenReturn('backend');
+      final driver = openDriver();
+      await expectLater(
+        driver.start(),
+        throwsA(isA<TranscribeEngineException>()),
+      );
+      verify(() => bindings.freeSession(any())).called(1);
+      await driver.dispose();
+    });
+  });
+}

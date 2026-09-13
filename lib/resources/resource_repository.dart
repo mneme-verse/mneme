@@ -108,6 +108,11 @@ class ResourceRepository {
   /// verified the bytes, and this is a cheap launch gate, not verification.
   bool isModelPresent(String id) => _models.exists(id);
 
+  /// Installed file for the model [id] without touching the filesystem.
+  /// Callers must ensure presence first ([isModelPresent]); the engine
+  /// reports a missing file as an open failure otherwise.
+  File modelFile(String id) => _models.pathFor(id);
+
   /// True when the language pack file exists. Same cheap-gate contract
   /// as [isModelPresent].
   bool isCorpusPackPresent(String id) => _corpora.exists(id);

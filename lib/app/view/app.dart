@@ -154,6 +154,7 @@ class _AppState extends State<App> {
       providers: [
         RepositoryProvider.value(value: PoetryRepository(database)),
         RepositoryProvider.value(value: StudyRepository(studyDatabase)),
+        RepositoryProvider.value(value: widget.resources),
       ],
       child: content,
     );
