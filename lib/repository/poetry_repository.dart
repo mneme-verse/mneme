@@ -6,9 +6,10 @@ class PoetryRepository {
 
   final AppDatabase _db;
 
-  /// Search poems using FTS5.
+  /// Search poems using FTS5 with as-you-type prefix matching.
   ///
-  /// [query] is the search string.
+  /// [query] is the search string; the last term becomes a prefix query
+  /// (`Pus` matches `Pushkin`), so results narrow while typing.
   /// [activeLanguages] filters results by language code.
   Future<List<Poem>> searchPoems(
     String query,
@@ -34,7 +35,7 @@ class PoetryRepository {
     // If we have variable number of languages, we need to generate
     // placeholders.
 
-    final searchTerm = query.trim();
+    final searchTerm = _prefixTerm(query);
     const sql = '''
       SELECT poems.* 
       FROM poems 
@@ -146,6 +147,49 @@ class PoetryRepository {
         ),
     ];
   }
+
+  /// One poem by database id, null when absent.
+  Future<Poem?> getPoemById(int id) {
+    return (_db.select(
+      _db.poems,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  /// One poem by stable builder key, null when absent.
+  Future<Poem?> getPoemByKey(String poemKey) {
+    return (_db.select(
+      _db.poems,
+    )..where((t) => t.poemKey.equals(poemKey))).getSingleOrNull();
+  }
+
+  /// Poems for one author, most prolific ordering is the caller's concern;
+  /// here insertion order keeps the author's list stable.
+  Future<List<Poem>> getPoemsByAuthor(String authorName) async {
+    final rows = await (_db.select(_db.poemAuthors).join([
+      innerJoin(
+        _db.authors,
+        _db.authors.id.equalsExp(_db.poemAuthors.authorId),
+      ),
+      innerJoin(_db.poems, _db.poems.id.equalsExp(_db.poemAuthors.poemId)),
+    ])..where(_db.authors.name.equals(authorName))).get();
+    return rows.map((row) => row.readTable(_db.poems)).toList();
+  }
+}
+
+/// Turns a raw query into an FTS5 prefix query on its last term, so
+/// as-you-type input narrows results (`Pus` matches `Pushkin`). Terms that
+/// cannot take the prefix operator pass through unchanged.
+String _prefixTerm(String query) {
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) return trimmed;
+  final lastSpace = trimmed.lastIndexOf(RegExp(r'\s'));
+  final head = lastSpace < 0 ? '' : '${trimmed.substring(0, lastSpace)} ';
+  final tail = lastSpace < 0 ? trimmed : trimmed.substring(lastSpace + 1);
+  if (tail.endsWith('*') || tail.endsWith('"')) return trimmed;
+  if (!RegExp(r'[\p{L}\p{N}]$', unicode: true).hasMatch(tail)) {
+    return trimmed;
+  }
+  return '$head$tail*';
 }
 
 /// One FTS passage hit: the poem it belongs to plus the token window the

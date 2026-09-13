@@ -64,6 +64,22 @@ class StudyRepository {
     return [for (final row in rows) _toCard(row)];
   }
 
+  /// Stable poem keys due at [asOf] (default now), earliest first.
+  Future<List<String>> duePoemKeys({DateTime? asOf, int limit = 20}) async {
+    final at = (asOf ?? DateTime.now().toUtc()).toUtc();
+    final rows =
+        await (_db.select(_db.studyCards)
+              ..where(
+                (card) => card.dueMillis.isSmallerOrEqualValue(
+                  at.millisecondsSinceEpoch,
+                ),
+              )
+              ..orderBy([(card) => OrderingTerm.asc(card.dueMillis)])
+              ..limit(limit))
+            .get();
+    return [for (final row in rows) row.poemKey];
+  }
+
   /// Review logs for [poemKey], newest first. Empty for unseen poems.
   Future<List<fsrs.ReviewLog>> reviewHistory(String poemKey) async {
     final card = await (_db.select(

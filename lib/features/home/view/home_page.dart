@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mneme/features/author/view/author_page.dart';
 import 'package:mneme/features/home/bloc/home_cubit.dart';
+import 'package:mneme/features/search/view/search_page.dart';
+import 'package:mneme/features/study/view/study_page.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({required this.language, super.key});
 
-  static Route<void> route() {
-    return MaterialPageRoute<void>(builder: (_) => const HomePage());
+  /// Active corpus language, constraining search.
+  final String language;
+
+  static Route<void> route({required String language}) {
+    return MaterialPageRoute<void>(
+      builder: (_) => HomePage(language: language),
+    );
   }
 
   @override
@@ -18,16 +26,20 @@ class HomePage extends StatelessWidget {
         context.read<PoetryRepository>(),
         // ignore: discarded_futures -- fire and forget
       )..fetchAuthors(),
-      child: const HomeView(),
+      child: HomeView(language: language),
     );
   }
 }
 
 class HomeView extends StatefulWidget {
   const HomeView({
+    required this.language,
     super.key,
     this.scrollController,
   });
+
+  /// Active corpus language, constraining search.
+  final String language;
 
   /// Optional scroll controller for testing purposes.
   final ScrollController? scrollController;
@@ -76,15 +88,13 @@ class _HomeViewState extends State<HomeView> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: () {
-              // TODO(rominf): Implement SearchDelegate/SearchView
-            },
+            onPressed: () => Navigator.of(context).push(
+              SearchPage.route(activeLanguages: [widget.language]),
+            ),
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              // TODO(rominf): Issue #5 - Navigate to Settings
-            },
+            icon: const Icon(Icons.school),
+            onPressed: () => Navigator.of(context).push(StudyPage.route()),
           ),
         ],
       ),
@@ -116,9 +126,9 @@ class _HomeViewState extends State<HomeView> {
                 return ListTile(
                   title: Text(author.name),
                   subtitle: Text(context.l10n.poemsCount(author.poemCount)),
-                  onTap: () {
-                    // TODO(rominf): Navigate to AuthorDetailsPage
-                  },
+                  onTap: () => Navigator.of(context).push(
+                    AuthorPage.route(authorName: author.name),
+                  ),
                 );
               },
             );

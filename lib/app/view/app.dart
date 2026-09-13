@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mneme/db/connection/study_connection.dart';
 import 'package:mneme/db/database.dart';
+import 'package:mneme/db/study_database.dart';
 import 'package:mneme/features/home/view/home_page.dart';
 import 'package:mneme/features/onboarding/view/onboarding_page.dart';
 import 'package:mneme/l10n/l10n.dart';
 import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/repository/study_repository.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
@@ -54,6 +57,8 @@ class _AppState extends State<App> {
 
   String _mode = _loading;
   AppDatabase? _database;
+  StudyDatabase? _studyDatabase;
+  late String _language;
 
   @override
   void initState() {
@@ -99,6 +104,8 @@ class _AppState extends State<App> {
     setState(() {
       unawaited(_database?.close() ?? Future<void>.value());
       _database = widget.databaseOpener(language);
+      _studyDatabase ??= StudyDatabase(openStudyConnection());
+      _language = language;
       _mode = 'home';
     });
   }
@@ -107,17 +114,20 @@ class _AppState extends State<App> {
     _openLanguage(language);
   }
 
-  PoetryRepository get _poetryRepository => PoetryRepository(_database!);
-
   @override
   void dispose() {
     unawaited(_database?.close() ?? Future<void>.value());
+    unawaited(_studyDatabase?.close() ?? Future<void>.value());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    // Repositories sit above MaterialApp so pushed routes (reader, search,
+    // study, author) resolve them; only home mode opens databases.
+    final database = _database;
+    final studyDatabase = _studyDatabase;
+    final content = MaterialApp(
       theme: ThemeData(
         appBarTheme: AppBarTheme(
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -136,11 +146,16 @@ class _AppState extends State<App> {
           speechModel: widget.speechModel,
           onCompleted: _onOnboardingCompleted,
         ),
-        _ => RepositoryProvider.value(
-          value: _poetryRepository,
-          child: const HomePage(),
-        ),
+        _ => HomePage(language: _language),
       },
+    );
+    if (database == null || studyDatabase == null) return content;
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider.value(value: PoetryRepository(database)),
+        RepositoryProvider.value(value: StudyRepository(studyDatabase)),
+      ],
+      child: content,
     );
   }
 }
