@@ -36,12 +36,9 @@ migrate_working_dir/
 .pub/
 build/
 
-# Vendored transcribe.cpp checkout (124 MB upstream source). Recreate with:
-#   git clone https://github.com/handy-computer/transcribe.cpp \
-#     third_party/transcribe.cpp
-# then check out the revision pinned in docs/model-lock.json. The desktop
-# harness verifies the revision before building.
-third_party/
+# transcribe.cpp is a git submodule pinned to the revision in
+# docs/model-lock.json. The desktop harness verifies the revision
+# before building.
 flutter_*.png
 linked_*.ds
 unlinked.ds
