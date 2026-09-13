@@ -167,6 +167,63 @@ void main() {
       expect(zipFile.readAsStringSync(), 'zip-content');
     });
 
+    test('download retries transient failures then succeeds', () async {
+      final builder = TestPoeTreeBuilder(
+        client: mockClient,
+        dbOutputDir: tempDir.path,
+      );
+      const lang = 'en';
+      const zipUrl = 'https://zenodo.org/records/17414036/files/en.zip';
+      var calls = 0;
+      when(
+        mockClient.get(Uri.parse(zipUrl)),
+      ).thenAnswer((_) async {
+        calls++;
+        if (calls == 1) return http.Response('try later', 504);
+        return http.Response('zip-content', 200);
+      });
+
+      await builder.downloadAndExtractCorpus(
+        lang,
+        'https://zenodo.org/records/17414036/files',
+        tempDir,
+        waitForRetry: (_) async {},
+      );
+
+      expect(calls, 2);
+      expect(builder.extractedZips, hasLength(1));
+    });
+
+    test('download gives up after repeated failures', () async {
+      final builder = TestPoeTreeBuilder(
+        client: mockClient,
+        dbOutputDir: tempDir.path,
+      );
+      const lang = 'en';
+      const zipUrl = 'https://zenodo.org/records/17414036/files/en.zip';
+      var calls = 0;
+      when(
+        mockClient.get(Uri.parse(zipUrl)),
+      ).thenAnswer((_) async {
+        calls++;
+        return http.Response('unavailable', 503);
+      });
+
+      await builder.downloadAndExtractCorpus(
+        lang,
+        'https://zenodo.org/records/17414036/files',
+        tempDir,
+        waitForRetry: (_) async {},
+      );
+
+      expect(calls, 5);
+      expect(builder.extractedZips, isEmpty);
+      expect(
+        File(path.join(tempDir.path, 'en.zip')).existsSync(),
+        isFalse,
+      );
+    });
+
     test('downloadOrExtractCorpus skips download if zip exists', () async {
       // Setup
       final builder = TestPoeTreeBuilder(
