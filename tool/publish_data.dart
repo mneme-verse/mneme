@@ -80,15 +80,21 @@ class DataPublisher {
 
     // 2. Validate Manifest (License validation moved to builder tests)
     final manifestContent = await manifestFile.readAsString();
-    final manifest = json.decode(manifestContent) as Map<String, dynamic>;
-
+    final Object? decodedManifest = json.decode(manifestContent);
+    if (decodedManifest is! Map<String, dynamic>) {
+      throw Exception('Local manifest is not a JSON object.');
+    }
+    final manifest = decodedManifest;
     print('✅ Artifacts valid (${zstFiles.length} files + manifest)');
 
     // 3. Prepare Release Info
     String? version;
     for (final key in manifest.keys) {
       if (key == 'license') continue;
-      final entry = manifest[key] as Map<String, dynamic>;
+      final entry = manifest[key];
+      if (entry is! Map<String, dynamic>) {
+        throw Exception('Manifest entry "$key" is not a JSON object.');
+      }
       if (entry.containsKey('version')) {
         version = entry['version'] as String;
         break;

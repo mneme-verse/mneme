@@ -76,13 +76,16 @@ class CorpusManifestClient {
       );
     }
 
-    final Map<String, dynamic> manifest;
+    final Object? decoded;
     try {
-      manifest =
-          json.decode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      decoded = json.decode(utf8.decode(response.bodyBytes));
     } on FormatException catch (error) {
       throw CorpusManifestException('manifest is not JSON: $error');
     }
+    if (decoded is! Map<String, dynamic>) {
+      throw const CorpusManifestException('manifest is not a JSON object');
+    }
+    final manifest = decoded;
 
     final entry = manifest[language];
     if (entry is! Map<String, dynamic>) {

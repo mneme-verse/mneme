@@ -265,6 +265,51 @@ void main() {
       );
       expect(cubit.state.phase, OnboardingPhase.failed);
     });
+
+    test('a newer run supersedes the manifest fetch', () async {
+      final requested = Completer<void>();
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      final manifestBody = utf8.encode(
+        json.encode({
+          'ru': {
+            'file': 'ru.db.zst',
+            'name': 'Русский',
+            'size': corpusBytes.length,
+            'sha256': corpusSha256,
+            'version': '1.0+2',
+            'schema_version': 2,
+          },
+        }),
+      );
+      final client = MockClient((request) async {
+        if (request.url.toString() == manifestUrl.toString()) {
+          if (!requested.isCompleted) requested.complete();
+          await gate.future;
+          return http.Response.bytes(manifestBody, 200);
+        }
+        if (request.url.toString() == fakeSpeechModel.url) {
+          return http.Response.bytes(modelBytes, 200);
+        }
+        return http.Response.bytes(corpusBytes, 200);
+      });
+      final cubit = buildCubit(client);
+      addTearDown(cubit.close);
+      final first = cubit.selectLanguage('ru');
+      await requested.future;
+      // The second run cancels the first while it still awaits the
+      // manifest; the first must fail without touching the new run.
+      final second = cubit.selectLanguage('ru');
+      gate.complete();
+      await expectLater(
+        first,
+        throwsA(isA<InstallCanceledException>()),
+      );
+      await second;
+      expect(cubit.state.phase, OnboardingPhase.completed);
+    });
   });
 }
 

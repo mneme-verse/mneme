@@ -118,6 +118,22 @@ void main() {
       );
     });
 
+    test('throws if the local manifest is not an object', () async {
+      when(mockManifestFile.readAsString()).thenAnswer((_) async => '[]');
+      final publisher = DataPublisher(
+        dbOutputDir: 'assets/database',
+        processRunner: mockProcessRunner,
+        fs: mockFs,
+      );
+
+      expect(
+        publisher.publish(),
+        throwsA(
+          predicate((e) => e.toString().contains('not a JSON object')),
+        ),
+      );
+    });
+
     test('successfully releases new version', () async {
       final publisher = DataPublisher(
         dbOutputDir: 'assets/database',

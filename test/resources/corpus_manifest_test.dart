@@ -62,6 +62,8 @@ void main() {
   test('malformed manifests fail with a typed exception', () async {
     final badManifests = <String, Object>{
       'not JSON': 'this is not json',
+      'JSON array': '[1, 2]',
+      'JSON number': '42',
       'missing entry': jsonEncode({'en': entry(file: 'en.db.zst')}),
       'bad schema': jsonEncode({
         'ru': {...entry(file: 'ru.db.zst'), 'schema_version': 1},

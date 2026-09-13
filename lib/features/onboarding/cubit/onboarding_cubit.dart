@@ -96,24 +96,29 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final CorpusManifestClient _manifestClient;
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
-  StreamSubscription<ResourceState>? _progressSubscription;
-  InstallCancelToken? _runToken;
+  _OnboardingRun? _run;
+
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
 
   /// Starts installing resources for [language].
   ///
   /// Failures surface as [OnboardingPhase.failed] with [OnboardingState.error];
+  /// the error is also rethrown for awaiting callers. A completed install
+  /// emits [OnboardingPhase.completed] and persists the language. A newer
+  /// run, [cancel], or [close] supersedes this one: only the latest run
+  /// may emit or clean up.
   Future<void> selectLanguage(String language) async {
-    await _progressSubscription?.cancel();
     // A new run supersedes any previous one, including a manifest fetch
-    // that has no resource token yet.
-    _runToken?.cancel();
-    final runToken = _runToken = InstallCancelToken();
-    _progressSubscription = _resources.states.listen((update) {
-      // Mirror byte progress into the installing state. Events from a
-      // previous run are impossible (the old subscription is canceled
-      // above), and events after completion are ignored by the phase.
+    // that has no resource token yet. The old installer keeps running in
+    // the background, but its emissions and cleanup no longer apply.
+    _run?.token.cancel();
+    await _run?.subscription?.cancel();
+    final run = _run = _OnboardingRun(InstallCancelToken());
+    run.subscription = _resources.states.listen((update) {
+      // Mirror byte progress into the installing state. Stale runs and
+      // post-completion events are ignored by identity and phase.
+      if (!identical(_run, run)) return;
       if (state.phase != OnboardingPhase.installing) return;
       emit(
         state.copyWith(
@@ -135,7 +140,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
     try {
       final pack = await _manifestClient.packFor(language);
-      if (runToken.isCanceled) throw InstallCanceledException(pack.file);
+      if (run.token.isCanceled) throw InstallCanceledException(pack.file);
       emit(
         state.copyWith(
           resource: OnboardingResource.corpus,
@@ -150,7 +155,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       );
 
       final model = _speechModel;
-      if (runToken.isCanceled) throw InstallCanceledException(model.id);
+      if (run.token.isCanceled) throw InstallCanceledException(model.id);
       emit(
         state.copyWith(
           resource: OnboardingResource.speechModel,
@@ -159,6 +164,9 @@ class OnboardingCubit extends Cubit<OnboardingState> {
         ),
       );
       await _resources.installSpeechModel(model);
+      // A cancel that lands after the last byte must still win: never
+      // persist completion for a superseded run.
+      if (run.token.isCanceled) throw InstallCanceledException(model.id);
 
       final prefs = await _resolvePrefs();
       await prefs.setString('selected_language', language);
@@ -171,20 +179,26 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
       emit(state.copyWith(phase: OnboardingPhase.completed));
     } on InstallCanceledException {
-      emit(state.copyWith(phase: OnboardingPhase.failed));
+      if (identical(_run, run)) {
+        emit(state.copyWith(phase: OnboardingPhase.failed));
+      }
       rethrow;
     } catch (error) {
-      emit(state.copyWith(phase: OnboardingPhase.failed, error: error));
+      if (identical(_run, run)) {
+        emit(state.copyWith(phase: OnboardingPhase.failed, error: error));
+      }
       rethrow;
     } finally {
-      await _progressSubscription?.cancel();
-      _progressSubscription = null;
+      if (identical(_run, run)) {
+        await run.subscription?.cancel();
+        _run = null;
+      }
     }
   }
 
   /// Cancels the in-flight install of the current language.
   void cancel() {
-    _runToken?.cancel();
+    _run?.token.cancel();
     final language = state.language;
     if (language == null) return;
 
@@ -203,8 +217,18 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   @override
   Future<void> close() async {
-    _runToken?.cancel();
-    await _progressSubscription?.cancel();
+    _run?.token.cancel();
+    await _run?.subscription?.cancel();
     return super.close();
   }
+}
+
+/// One onboarding attempt: emissions and cleanup apply only while this
+/// run is still the cubit's latest.
+class _OnboardingRun {
+  _OnboardingRun(this.token);
+
+  final InstallCancelToken token;
+  // ignore: cancel_subscriptions -- canceled on replace, settle, and close.
+  StreamSubscription<ResourceState>? subscription;
 }
