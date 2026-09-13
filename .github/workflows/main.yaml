@@ -19,8 +19,17 @@ jobs:
   build:
     uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/flutter_package.yml@v1
     with:
-      flutter_version: "3.35.x"
-
+      # very_good_cli 1.1.1 (installed by the reusable workflow) needs
+      # Dart ^3.11, which Flutter 3.35 (Dart 3.9) cannot provide. This
+      # tracks the validated developer SDK; keep pubspec and lockfile
+      # installable by it.
+      flutter_version: "3.47.x"
+      # es_compression resolves its native blob via ZSTD_LIBRARY_PATH.
+      # Package-relative lookup does not work under flutter test, so
+      # locate the pub-cache blob (version-agnostic) for the test step.
+      setup: >
+        echo "ZSTD_LIBRARY_PATH=$(dirname $(find ~/.pub-cache -name
+        'eszstd-linux64.so' -print -quit))" >> "$GITHUB_ENV"
   spell-check:
     uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@v1
     with:

@@ -8,6 +8,7 @@ import 'package:mneme/db/database.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:path/path.dart' as path;
+import 'package:sqlite3/sqlite3.dart';
 import 'package:test/test.dart';
 
 // Import the builder tool file.
@@ -112,6 +113,25 @@ void main() {
 
       final result = extractPoemData(json, 'en');
       expect(result, isNull);
+    });
+
+    test('distinguishes id-less variants by title and body', () {
+      Map<String, dynamic> poem(String title, String body) => {
+        'title': title,
+        'author': {'name': 'A'},
+        'body': [
+          {'text': body},
+        ],
+      };
+
+      final first = extractPoemData(poem('Same', 'Body'), 'en');
+      final variant = extractPoemData(poem('Same', 'Other body'), 'en');
+      final twin = extractPoemData(poem('Same', 'Body'), 'en');
+
+      expect(first, isNotNull);
+      expect(variant, isNotNull);
+      expect(first!['poemKey'], isNot(variant!['poemKey']));
+      expect(twin!['poemKey'], first['poemKey']);
     });
   });
 
@@ -443,6 +463,31 @@ void main() {
 
       // Verify compression happened
       expect(compressedFiles, ['en.db']);
+    });
+  });
+
+  group('readCorpusBuildMarker', () {
+    test('requires the completion marker', () {
+      expect(
+        PoeTreeBuilder.readCorpusBuildMarker(
+          File('${tempDir.path}/missing.db'),
+        ),
+        isNull,
+      );
+
+      final partial = File('${tempDir.path}/partial.db');
+      sqlite3.open(partial.path)
+        ..execute('CREATE TABLE metadata (key TEXT, value TEXT);')
+        ..execute("INSERT INTO metadata VALUES ('license', 'x');")
+        ..dispose();
+      expect(PoeTreeBuilder.readCorpusBuildMarker(partial), isNull);
+
+      sqlite3.open(partial.path)
+        ..execute(
+          "INSERT INTO metadata VALUES ('builder_complete', '1.0+2');",
+        )
+        ..dispose();
+      expect(PoeTreeBuilder.readCorpusBuildMarker(partial), '1.0+2');
     });
   });
 }

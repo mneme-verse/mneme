@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 
 import 'package:archive/archive_io.dart';
 import 'package:args/args.dart';
@@ -11,7 +12,10 @@ import 'package:drift/native.dart';
 import 'package:es_compression/zstd.dart';
 import 'package:http/http.dart' as http;
 import 'package:mneme/db/database.dart';
+import 'package:mneme/recitation/normalized_text.dart';
+import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:path/path.dart' as path;
+import 'package:sqlite3/sqlite3.dart';
 
 const _availableCorpora = ['cs', 'de', 'en', 'hu', 'no', 'pt', 'ru', 'sl'];
 const _filesPerHarvestIsolate = 500;
@@ -27,6 +31,12 @@ const _languageNames = {
   'ru': 'Русский',
   'sl': 'Slovenščina',
 };
+
+/// Number of normalized tokens covered by one recitation passage window.
+const passageWindowTokens = 32;
+
+/// Token stride between successive passage windows.
+const passageStrideTokens = 16;
 
 /// PoeTree corpus ETL script that downloads and converts PoeTree JSON files
 /// to SQLite database.
@@ -400,10 +410,18 @@ class PoeTreeBuilder {
       final dbPath = path.join(dbDir.path, '$langCode.db');
       final dbFile = File(dbPath);
 
-      // Check if database already exists and we're not cleaning
+      // Reuse an existing database only when it carries the current
+      // build marker: user_version alone cannot prove the build finished
+      // (triggers, poems, passages, FTS rows, metadata). The app applies
+      // the same freshness rule on open.
       if (dbFile.existsSync() && !cleanTargets.contains('db')) {
-        print('  ⏭️  Skipping $langCode (database already exists)');
-        continue;
+        if (readCorpusBuildMarker(dbFile) == corpusDataVersion) {
+          print('  ⏭️  Skipping $langCode (database already exists)');
+          continue;
+        }
+        print(
+          '  ♻️  Rebuilding $langCode (missing or stale build marker)',
+        );
       }
 
       // Delete existing database for this language if cleaning
@@ -446,7 +464,9 @@ class PoeTreeBuilder {
       final authorIdToCount = <int, int>{};
       var nextAuthorId = 1;
       var nextPoemId = 1;
-
+      // poemKeys already inserted for this language: exact duplicates
+      // share a key and would violate its UNIQUE constraint.
+      final seenPoemKeys = <String>{};
       // Batch queues
       final poemsBatch = <Map<String, dynamic>>[];
       final poemAuthorsBatch = <Map<String, dynamic>>[];
@@ -488,6 +508,10 @@ class PoeTreeBuilder {
             // Process the batch result on main thread to assign IDs
             // and manage relations.
             for (final p in poemsData) {
+              if (!seenPoemKeys.add(p['poemKey'] as String)) {
+                skippedPoems++;
+                continue;
+              }
               final poemId = nextPoemId++;
               p['id'] = poemId; // Assign manual ID
 
@@ -567,13 +591,22 @@ class PoeTreeBuilder {
       // Rebuild FTS
       print('\n  🏗️  Building FTS index...');
       await db.customStatement(
-        'INSERT INTO poems_fts (rowid, title, author, body, alt_titles) '
+        'INSERT INTO poems_fts (rowid, title, author_names, body, alt_titles) '
         'SELECT id, title, author_names, body, alt_titles FROM poems',
       );
 
       // Restore triggers
       print('  🔄 Restoring FTS triggers...');
       await db.createFtsTriggers();
+
+      // Build recitation passages and their FTS index
+      print('  🔎 Building recitation passages...');
+      final passageCount = await buildPassages(db);
+      await db.customStatement(
+        'INSERT INTO passages_fts (rowid, search_text) '
+        'SELECT id, search_text FROM poem_passages',
+      );
+      print('     ✓ $passageCount passages indexed');
 
       print('  🧹 Vacuuming database...');
       await db.customStatement('VACUUM;');
@@ -588,6 +621,16 @@ class PoeTreeBuilder {
               value: 'CC BY-SA 4.0 / PoeTree',
             ),
           );
+      // Completion marker: reuse checks require it, so an interrupted
+      // build below this point is rebuilt instead of published partial.
+      await db
+          .into(db.metadata)
+          .insert(
+            MetadataCompanion.insert(
+              key: 'builder_complete',
+              value: corpusDataVersion,
+            ),
+          );
 
       await db.close();
       print('     ✓ $langPoems poems from $langCode');
@@ -597,6 +640,24 @@ class PoeTreeBuilder {
     print('     • Total poems: $totalPoems');
     print('     • Skipped: $skippedPoems');
     print('     • Files processed: $processedFiles');
+  }
+
+  /// Reads the builder completion marker without opening drift.
+  ///
+  /// Returns null for missing files, missing tables, or builds that never
+  /// finished: only a completed build of [corpusDataVersion] is reusable.
+  static String? readCorpusBuildMarker(File dbFile) {
+    if (!dbFile.existsSync()) return null;
+    final probe = sqlite3.open(dbFile.path);
+    try {
+      final rows = probe.select(
+        "SELECT value FROM metadata WHERE key = 'builder_complete'",
+      );
+      if (rows.isEmpty) return null;
+      return rows.single['value'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Compress all generated .db files to .zst using Isolates
@@ -614,9 +675,11 @@ class PoeTreeBuilder {
 
         if (!selectedLanguages.contains(lang)) return false;
 
-        // Check if .zst file already exists
+        // Recompress when the database is newer than its archive, so a
+        // rebuilt database never ships behind a stale pack.
         final zstFile = File(path.setExtension(f.path, '.db.zst'));
-        if (zstFile.existsSync()) {
+        if (zstFile.existsSync() &&
+            !f.lastModifiedSync().isAfter(zstFile.lastModifiedSync())) {
           print('     ⏭️  Skipping $lang compression (already compressed)');
           return false;
         }
@@ -662,10 +725,10 @@ class PoeTreeBuilder {
       'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
     };
 
-    // Using a fixed version for now as requested
-    const poetreeVersion = '1.0';
-    const internalVersion = 1;
-    const versionObj = '$poetreeVersion+$internalVersion';
+    // Single source of truth with the client default release tag; bump
+    // corpusDataVersion in lib/resources/corpus_manifest.dart to cut a
+    // new corpus release.
+    const versionObj = corpusDataVersion;
 
     for (final file in zstFiles) {
       final filename = path.basename(file.path);
@@ -674,14 +737,20 @@ class PoeTreeBuilder {
 
       final bytes = await file.readAsBytes();
       final size = bytes.length;
-      final hash = md5.convert(bytes).toString();
+      final sha256Hash = sha256.convert(bytes).toString();
+
+      // Uncompressed size, from the sibling .db when it still exists
+      final rawDb = File(path.setExtension(file.path, '.db'));
+      final uncompressedSize = rawDb.existsSync() ? rawDb.lengthSync() : size;
 
       manifest[lang] = {
         'file': filename,
         'name': _languageNames[lang] ?? lang,
         'size': size,
-        'hash': hash,
+        'sha256': sha256Hash,
+        'uncompressed_size': uncompressedSize,
         'version': versionObj,
+        'schema_version': 2,
         'license': licenseObj,
       };
     }
@@ -702,26 +771,23 @@ class PoeTreeBuilder {
   }
 }
 
-/// Extract and map PoeTree JSON to Map structure for JSON insert
-/// Extract and map PoeTree JSON to Map structure for JSON insert
+/// Extract and map PoeTree JSON to Map structure for JSON insert.
+///
+/// Identity uses the upstream poem id when present and falls back to a
+/// SHA-256 of the title and UTF-8 body, so keys stay stable across corpus
+/// rebuilds while distinct id-less variants keep distinct keys.
 Map<String, dynamic>? extractPoemData(
   Map<String, dynamic> data,
   String langCode, [
   List<String>? altTitles,
 ]) {
   try {
-    // Extract title (may be null)
     final title = data['title'] as String?;
-    if (title == null || title.isEmpty) {
-      return null; // Skip poems without titles
-    }
+    if (title == null || title.isEmpty) return null;
 
-    // Extract author name(s)
     final authorData = data['author'];
-    List<String> authors;
-
+    final List<String> authors;
     if (authorData is List) {
-      // Multiple authors
       authors = authorData
           .cast<Map<String, dynamic>>()
           .map((a) => a['name'] as String?)
@@ -737,60 +803,109 @@ Map<String, dynamic>? extractPoemData(
       return null;
     }
 
-    // Encode authors and alternative titles as JSON
     final altTitlesJson = altTitles != null && altTitles.isNotEmpty
         ? json.encode(altTitles)
         : null;
 
-    // Extract body - concatenate line texts, stripping annotations
     final bodyData = data['body'] as List<dynamic>?;
-    if (bodyData == null || bodyData.isEmpty) {
-      return null;
+    if (bodyData == null || bodyData.isEmpty) return null;
+
+    // Keep every original line, including blank ones, so offsets computed
+    // later remain aligned with the source text.
+    final lines = <String>[];
+    for (final line in bodyData) {
+      if (line is! Map<String, dynamic>) continue;
+      final text = line['text'] as String?;
+      if (text != null) lines.add(text);
     }
-
-    final lines = bodyData
-        .cast<Map<String, dynamic>>()
-        .map((line) => line['text'] as String?)
-        .where((text) => text != null && text.isNotEmpty)
-        .toList();
-
     if (lines.isEmpty) return null;
 
     final body = lines.join('\n');
 
-    // Extract year - prefer year_created, fallback to source.year_published
-    // Store as JSON list for ranges, string for single years
     String? year;
     final yearCreated = data['year_created'];
-    if (yearCreated != null) {
-      if (yearCreated is int) {
-        year = yearCreated.toString();
-      } else if (yearCreated is List && yearCreated.isNotEmpty) {
-        // Time span like [1800, 1802] - store as JSON list
-        year = json.encode(yearCreated);
-      }
+    if (yearCreated is int) {
+      year = yearCreated.toString();
+    } else if (yearCreated is List && yearCreated.isNotEmpty) {
+      year = json.encode(yearCreated);
     }
-
-    // Fallback to publication year
     if (year == null) {
       final source = data['source'] as Map<String, dynamic>?;
       final yearPub = source?['year_published'];
-      if (yearPub is int) {
-        year = yearPub.toString();
-      }
+      if (yearPub is int) year = yearPub.toString();
     }
+
+    final contentHash = sha256.convert(utf8.encode(body)).toString();
+    final sourceId = data['id']?.toString();
+    // Id-less records fall back to a title+body hash so distinct variants
+    // keep distinct keys; byte-identical duplicates still share a key and
+    // are dropped as duplicates before insert instead of failing the build.
+    final identity = sourceId == null || sourceId.isEmpty
+        ? sha256.convert(utf8.encode('$title\n$body')).toString()
+        : sourceId;
 
     return {
       'title': title,
-      'raw_authors': authors, // Pass raw list for main thread processing
+      'raw_authors': authors,
       'body': body,
       'year': year,
       'alt_titles': altTitlesJson,
+      'poemKey': 'poetree:$langCode:$identity',
+      'language': langCode,
+      'contentHash': contentHash,
     };
-  } catch (e) {
+  } catch (_) {
     // Skip malformed poems
     return null;
   }
+}
+
+/// Generate bounded recitation passages for every poem in [db].
+///
+/// Each passage stores the normalized keys of one token window so live
+/// transcription prefixes can be matched with FTS5 before detailed
+/// alignment. Windows advance by [passageStrideTokens], guaranteeing any
+/// recitation start position is covered by at least one passage.
+Future<int> buildPassages(AppDatabase db) async {
+  final rows = await db
+      .customSelect(
+        'SELECT id, body FROM poems ORDER BY id',
+        readsFrom: {db.poems},
+      )
+      .get();
+
+  var count = 0;
+  var batch = <Map<String, dynamic>>[];
+  for (final row in rows) {
+    final poemId = row.read<int>('id');
+    final body = row.read<String>('body');
+    final tokens = normalizeRecitationText(body).tokens;
+    if (tokens.isEmpty) continue;
+
+    for (var start = 0; start < tokens.length; start += passageStrideTokens) {
+      final end = math.min(start + passageWindowTokens, tokens.length);
+      batch.add({
+        'poem_id': poemId,
+        'start_token': start,
+        'end_token': end,
+        'search_text': tokens
+            .sublist(start, end)
+            .map((token) => token.key)
+            .join(' '),
+      });
+      if (batch.length >= _dbInsertBatchSize) {
+        await db.batchInsertPassages(batch);
+        count += batch.length;
+        batch = <Map<String, dynamic>>[];
+      }
+      if (end == tokens.length) break;
+    }
+  }
+  if (batch.isNotEmpty) {
+    await db.batchInsertPassages(batch);
+    count += batch.length;
+  }
+  return count;
 }
 
 class DuplicateHarvestResult {

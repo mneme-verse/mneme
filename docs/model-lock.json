@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "locked_at": "2026-09-13",
+  "engine": {
+    "name": "transcribe.cpp",
+    "repository": "https://github.com/handy-computer/transcribe.cpp",
+    "revision": "585b98f7e66777d16f2da734ceedaa7398060fa7"
+  },
+  "models": [
+    {
+      "id": "gigaam-v3-e2e-rnnt-q8_0",
+      "role": "primary-candidate",
+      "url": "https://huggingface.co/handy-computer/gigaam-v3-e2e-rnnt-gguf/resolve/f719d70812344f4d0fb8c11c0887b190501a7465/gigaam-v3-e2e-rnnt-Q8_0.gguf",
+      "sha256": "78d63b47723b7f8d78c6113a6ef983b5a86e2a86f6c273e1f5cb6967b1c4467a",
+      "size_bytes": 273724832,
+      "format": "gguf",
+      "quantization": "Q8_0",
+      "languages": ["ru"],
+      "streaming": false,
+      "license": {
+        "name": "MIT",
+        "url": "https://huggingface.co/ai-sage/GigaAM-v3",
+        "text_file": "docs/licenses/MIT.txt"
+      },
+      "upstream_base_model": {
+        "id": "ai-sage/GigaAM-v3",
+        "url": "https://huggingface.co/ai-sage/GigaAM-v3",
+        "revision": "ec1dc1f",
+        "license": "MIT"
+      },
+      "notes": [
+        "Upstream port reports 5.36% FLEURS Russian WER; token timestamps available.",
+        "No native streaming; segment-based inference recommended for utterances <= 25 s.",
+        "Russian only; foreign-language passages inside Russian poems are not supported by this model."
+      ]
+    },
+    {
+      "id": "nemotron-3.5-asr-streaming-0.6b-q8_0",
+      "role": "streaming-baseline",
+      "url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/0221a878b3f4c3efd14e976702058fe998d41573/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+      "sha256": "b94545b313b3223fda7b2857a52681da813935c2127643d1e9ff0c23d988089c",
+      "size_bytes": 751094240,
+      "format": "gguf",
+      "quantization": "Q8_0",
+      "languages": ["ru", "en", "fr", "multi"],
+      "streaming": true,
+      "license": {
+        "name": "OpenMDW-1.1",
+        "url": "https://openmdw.ai/license/1-1/",
+        "text_file": "docs/licenses/OpenMDW-1.1.txt"
+      },
+      "upstream_base_model": {
+        "id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+        "url": "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b",
+        "revision": "ea30d66debe3740a08b573244286791d423d6b3e",
+        "license": "OpenMDW-1.1"
+      },
+      "notes": [
+        "Cache-aware streaming with word/token timestamps and automatic language detection.",
+        "Published port WER gates are English, not Russian poetry; Russian accuracy must be measured on held-out human audio.",
+        "No claimed native Latin support; Latin passages must be evaluated against confirmed Russian reading variants."
+      ]
+    }
+  ],
+  "verification": {
+    "hash_source": "Hugging Face LFS ETag (X-Linked-ETag) for the pinned revision, retrieved 2026-09-13",
+    "hash_check_command": "curl -sI <url> | grep -i x-linked-etag",
+    "unverified": [
+      "Hashes are repository-side LFS metadata; byte-level download verification must still run in the installer and the desktop harness.",
+      "Android CPU portability, sustained performance, latency and peak RSS of both models are unmeasured."
+    ]
+  }
+}

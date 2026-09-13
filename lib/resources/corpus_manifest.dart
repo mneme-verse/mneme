@@ -1,0 +1,140 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
+/// Base URL of the published schema-two corpus release. The trailing slash
+/// keeps [Uri.resolve] inside the tag directory instead of replacing it.
+Uri corpusReleaseBase(String tag) => Uri.parse(
+  'https://github.com/mneme-verse/mneme/releases/download/$tag/',
+);
+
+/// Corpus data version written by `tool/builder.dart` (`generateManifest`)
+/// and published by `tool/publish_data.dart` as release `data-v<version>`.
+/// Both tools read this constant, so the client default below can never
+/// drift from the publisher tag.
+const corpusDataVersion = '1.0+2';
+
+/// Release tag for a corpus data version, e.g. `data-v1.0+2`. App releases
+/// and corpus data tags stay separate, so bumping this never touches app
+/// versioning.
+String corpusReleaseTagFor(String version) => 'data-v$version';
+
+/// Current corpus release tag, derived from [corpusDataVersion].
+const corpusReleaseTag = 'data-v$corpusDataVersion';
+
+/// One language pack from the published `manifest.json`.
+class CorpusPackInfo {
+  const CorpusPackInfo({
+    required this.language,
+    required this.file,
+    required this.sha256,
+    required this.sizeBytes,
+    required this.version,
+  });
+
+  final String language;
+  final String file;
+  final String sha256;
+  final int sizeBytes;
+  final String version;
+}
+
+/// Thrown when the published manifest does not satisfy the schema-two
+/// contract.
+class CorpusManifestException implements Exception {
+  const CorpusManifestException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'CorpusManifestException($message)';
+}
+
+/// Fetches and validates the corpus manifest, then resolves pack URLs.
+class CorpusManifestClient {
+  CorpusManifestClient({
+    http.Client? client,
+    Uri? manifestUrl,
+  }) : _client = client ?? http.Client(),
+       manifestUrl =
+           manifestUrl ??
+           corpusReleaseBase(corpusReleaseTag).resolve('manifest.json');
+
+  final http.Client _client;
+  final Uri manifestUrl;
+
+  /// Returns the pack entry for [language].
+  ///
+  /// Throws [CorpusManifestException] for missing entries or entries that
+  /// violate the schema-two contract (`sha256` hex, positive size,
+  /// `schema_version` 2, file exactly `<language>.db.zst`).
+  Future<CorpusPackInfo> packFor(String language) async {
+    final response = await _client.get(manifestUrl);
+    if (response.statusCode != 200) {
+      throw CorpusManifestException(
+        'manifest fetch failed: HTTP ${response.statusCode}',
+      );
+    }
+
+    final Object? decoded;
+    try {
+      decoded = json.decode(utf8.decode(response.bodyBytes));
+    } on FormatException catch (error) {
+      throw CorpusManifestException('manifest is not JSON: $error');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw const CorpusManifestException('manifest is not a JSON object');
+    }
+    final manifest = decoded;
+
+    final entry = manifest[language];
+    if (entry is! Map<String, dynamic>) {
+      throw CorpusManifestException(
+        'manifest has no entry for "$language" and no fallback is allowed',
+      );
+    }
+
+    final schemaVersion = entry['schema_version'];
+    if (schemaVersion != 2) {
+      throw CorpusManifestException(
+        'unsupported schema_version $schemaVersion for "$language"',
+      );
+    }
+
+    final sha256 = entry['sha256'];
+    if (sha256 is! String || !RegExp(r'^[0-9a-f]{64}$').hasMatch(sha256)) {
+      throw CorpusManifestException(
+        'entry "$language" lacks a valid sha256 checksum',
+      );
+    }
+
+    final size = entry['size'];
+    if (size is! int || size <= 0) {
+      throw CorpusManifestException(
+        'entry "$language" lacks a positive size',
+      );
+    }
+
+    // The connection layer probes `<language>.db.zst` and the installer
+    // treats the id as a plain file name, so the manifest filename must
+    // be exactly the language-keyed pack: anything else would install a
+    // file the app never opens.
+    final file = entry['file'];
+    if (file is! String || file != '$language.db.zst') {
+      throw CorpusManifestException(
+        'entry "$language" must name "$language.db.zst"',
+      );
+    }
+
+    return CorpusPackInfo(
+      language: language,
+      file: file,
+      sha256: sha256,
+      sizeBytes: size,
+      version: (entry['version'] ?? '').toString(),
+    );
+  }
+
+  /// Download URL for [pack] inside the same release as the manifest.
+  Uri packUrl(CorpusPackInfo pack) => manifestUrl.resolve(pack.file);
+}

@@ -73,6 +73,51 @@ class $PoemsTable extends Poems with TableInfo<$PoemsTable, Poem> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _poemKeyMeta = const VerificationMeta(
+    'poemKey',
+  );
+  @override
+  late final GeneratedColumn<String> poemKey = GeneratedColumn<String>(
+    'poem_key',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 1,
+      maxTextLength: 256,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _languageMeta = const VerificationMeta(
+    'language',
+  );
+  @override
+  late final GeneratedColumn<String> language = GeneratedColumn<String>(
+    'language',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 2,
+      maxTextLength: 5,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentHashMeta = const VerificationMeta(
+    'contentHash',
+  );
+  @override
+  late final GeneratedColumn<String> contentHash = GeneratedColumn<String>(
+    'content_hash',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 64,
+      maxTextLength: 64,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -81,6 +126,9 @@ class $PoemsTable extends Poems with TableInfo<$PoemsTable, Poem> {
     body,
     year,
     altTitles,
+    poemKey,
+    language,
+    contentHash,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -136,11 +184,42 @@ class $PoemsTable extends Poems with TableInfo<$PoemsTable, Poem> {
         altTitles.isAcceptableOrUnknown(data['alt_titles']!, _altTitlesMeta),
       );
     }
+    if (data.containsKey('poem_key')) {
+      context.handle(
+        _poemKeyMeta,
+        poemKey.isAcceptableOrUnknown(data['poem_key']!, _poemKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_poemKeyMeta);
+    }
+    if (data.containsKey('language')) {
+      context.handle(
+        _languageMeta,
+        language.isAcceptableOrUnknown(data['language']!, _languageMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_languageMeta);
+    }
+    if (data.containsKey('content_hash')) {
+      context.handle(
+        _contentHashMeta,
+        contentHash.isAcceptableOrUnknown(
+          data['content_hash']!,
+          _contentHashMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentHashMeta);
+    }
     return context;
   }
 
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {poemKey},
+  ];
   @override
   Poem map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -169,6 +248,18 @@ class $PoemsTable extends Poems with TableInfo<$PoemsTable, Poem> {
         DriftSqlType.string,
         data['${effectivePrefix}alt_titles'],
       ),
+      poemKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}poem_key'],
+      )!,
+      language: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}language'],
+      )!,
+      contentHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_hash'],
+      )!,
     );
   }
 
@@ -185,6 +276,9 @@ class Poem extends DataClass implements Insertable<Poem> {
   final String body;
   final String? year;
   final String? altTitles;
+  final String poemKey;
+  final String language;
+  final String contentHash;
   const Poem({
     required this.id,
     required this.title,
@@ -192,6 +286,9 @@ class Poem extends DataClass implements Insertable<Poem> {
     required this.body,
     this.year,
     this.altTitles,
+    required this.poemKey,
+    required this.language,
+    required this.contentHash,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -206,6 +303,9 @@ class Poem extends DataClass implements Insertable<Poem> {
     if (!nullToAbsent || altTitles != null) {
       map['alt_titles'] = Variable<String>(altTitles);
     }
+    map['poem_key'] = Variable<String>(poemKey);
+    map['language'] = Variable<String>(language);
+    map['content_hash'] = Variable<String>(contentHash);
     return map;
   }
 
@@ -219,6 +319,9 @@ class Poem extends DataClass implements Insertable<Poem> {
       altTitles: altTitles == null && nullToAbsent
           ? const Value.absent()
           : Value(altTitles),
+      poemKey: Value(poemKey),
+      language: Value(language),
+      contentHash: Value(contentHash),
     );
   }
 
@@ -234,6 +337,9 @@ class Poem extends DataClass implements Insertable<Poem> {
       body: serializer.fromJson<String>(json['body']),
       year: serializer.fromJson<String?>(json['year']),
       altTitles: serializer.fromJson<String?>(json['altTitles']),
+      poemKey: serializer.fromJson<String>(json['poemKey']),
+      language: serializer.fromJson<String>(json['language']),
+      contentHash: serializer.fromJson<String>(json['contentHash']),
     );
   }
   @override
@@ -246,6 +352,9 @@ class Poem extends DataClass implements Insertable<Poem> {
       'body': serializer.toJson<String>(body),
       'year': serializer.toJson<String?>(year),
       'altTitles': serializer.toJson<String?>(altTitles),
+      'poemKey': serializer.toJson<String>(poemKey),
+      'language': serializer.toJson<String>(language),
+      'contentHash': serializer.toJson<String>(contentHash),
     };
   }
 
@@ -256,6 +365,9 @@ class Poem extends DataClass implements Insertable<Poem> {
     String? body,
     Value<String?> year = const Value.absent(),
     Value<String?> altTitles = const Value.absent(),
+    String? poemKey,
+    String? language,
+    String? contentHash,
   }) => Poem(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -263,6 +375,9 @@ class Poem extends DataClass implements Insertable<Poem> {
     body: body ?? this.body,
     year: year.present ? year.value : this.year,
     altTitles: altTitles.present ? altTitles.value : this.altTitles,
+    poemKey: poemKey ?? this.poemKey,
+    language: language ?? this.language,
+    contentHash: contentHash ?? this.contentHash,
   );
   Poem copyWithCompanion(PoemsCompanion data) {
     return Poem(
@@ -274,6 +389,11 @@ class Poem extends DataClass implements Insertable<Poem> {
       body: data.body.present ? data.body.value : this.body,
       year: data.year.present ? data.year.value : this.year,
       altTitles: data.altTitles.present ? data.altTitles.value : this.altTitles,
+      poemKey: data.poemKey.present ? data.poemKey.value : this.poemKey,
+      language: data.language.present ? data.language.value : this.language,
+      contentHash: data.contentHash.present
+          ? data.contentHash.value
+          : this.contentHash,
     );
   }
 
@@ -285,14 +405,26 @@ class Poem extends DataClass implements Insertable<Poem> {
           ..write('authorNames: $authorNames, ')
           ..write('body: $body, ')
           ..write('year: $year, ')
-          ..write('altTitles: $altTitles')
+          ..write('altTitles: $altTitles, ')
+          ..write('poemKey: $poemKey, ')
+          ..write('language: $language, ')
+          ..write('contentHash: $contentHash')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, authorNames, body, year, altTitles);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    authorNames,
+    body,
+    year,
+    altTitles,
+    poemKey,
+    language,
+    contentHash,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -302,7 +434,10 @@ class Poem extends DataClass implements Insertable<Poem> {
           other.authorNames == this.authorNames &&
           other.body == this.body &&
           other.year == this.year &&
-          other.altTitles == this.altTitles);
+          other.altTitles == this.altTitles &&
+          other.poemKey == this.poemKey &&
+          other.language == this.language &&
+          other.contentHash == this.contentHash);
 }
 
 class PoemsCompanion extends UpdateCompanion<Poem> {
@@ -312,6 +447,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
   final Value<String> body;
   final Value<String?> year;
   final Value<String?> altTitles;
+  final Value<String> poemKey;
+  final Value<String> language;
+  final Value<String> contentHash;
   const PoemsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
@@ -319,6 +457,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
     this.body = const Value.absent(),
     this.year = const Value.absent(),
     this.altTitles = const Value.absent(),
+    this.poemKey = const Value.absent(),
+    this.language = const Value.absent(),
+    this.contentHash = const Value.absent(),
   });
   PoemsCompanion.insert({
     this.id = const Value.absent(),
@@ -327,9 +468,15 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
     required String body,
     this.year = const Value.absent(),
     this.altTitles = const Value.absent(),
+    required String poemKey,
+    required String language,
+    required String contentHash,
   }) : title = Value(title),
        authorNames = Value(authorNames),
-       body = Value(body);
+       body = Value(body),
+       poemKey = Value(poemKey),
+       language = Value(language),
+       contentHash = Value(contentHash);
   static Insertable<Poem> custom({
     Expression<int>? id,
     Expression<String>? title,
@@ -337,6 +484,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
     Expression<String>? body,
     Expression<String>? year,
     Expression<String>? altTitles,
+    Expression<String>? poemKey,
+    Expression<String>? language,
+    Expression<String>? contentHash,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -345,6 +495,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
       if (body != null) 'body': body,
       if (year != null) 'year': year,
       if (altTitles != null) 'alt_titles': altTitles,
+      if (poemKey != null) 'poem_key': poemKey,
+      if (language != null) 'language': language,
+      if (contentHash != null) 'content_hash': contentHash,
     });
   }
 
@@ -355,6 +508,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
     Value<String>? body,
     Value<String?>? year,
     Value<String?>? altTitles,
+    Value<String>? poemKey,
+    Value<String>? language,
+    Value<String>? contentHash,
   }) {
     return PoemsCompanion(
       id: id ?? this.id,
@@ -363,6 +519,9 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
       body: body ?? this.body,
       year: year ?? this.year,
       altTitles: altTitles ?? this.altTitles,
+      poemKey: poemKey ?? this.poemKey,
+      language: language ?? this.language,
+      contentHash: contentHash ?? this.contentHash,
     );
   }
 
@@ -387,6 +546,15 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
     if (altTitles.present) {
       map['alt_titles'] = Variable<String>(altTitles.value);
     }
+    if (poemKey.present) {
+      map['poem_key'] = Variable<String>(poemKey.value);
+    }
+    if (language.present) {
+      map['language'] = Variable<String>(language.value);
+    }
+    if (contentHash.present) {
+      map['content_hash'] = Variable<String>(contentHash.value);
+    }
     return map;
   }
 
@@ -398,7 +566,10 @@ class PoemsCompanion extends UpdateCompanion<Poem> {
           ..write('authorNames: $authorNames, ')
           ..write('body: $body, ')
           ..write('year: $year, ')
-          ..write('altTitles: $altTitles')
+          ..write('altTitles: $altTitles, ')
+          ..write('poemKey: $poemKey, ')
+          ..write('language: $language, ')
+          ..write('contentHash: $contentHash')
           ..write(')'))
         .toString();
   }
@@ -1076,6 +1247,363 @@ class MetadataCompanion extends UpdateCompanion<MetadataData> {
   }
 }
 
+class $PoemPassagesTable extends PoemPassages
+    with TableInfo<$PoemPassagesTable, PoemPassage> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PoemPassagesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _poemIdMeta = const VerificationMeta('poemId');
+  @override
+  late final GeneratedColumn<int> poemId = GeneratedColumn<int>(
+    'poem_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES poems (id)',
+    ),
+  );
+  static const VerificationMeta _startTokenMeta = const VerificationMeta(
+    'startToken',
+  );
+  @override
+  late final GeneratedColumn<int> startToken = GeneratedColumn<int>(
+    'start_token',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _endTokenMeta = const VerificationMeta(
+    'endToken',
+  );
+  @override
+  late final GeneratedColumn<int> endToken = GeneratedColumn<int>(
+    'end_token',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _searchTextMeta = const VerificationMeta(
+    'searchText',
+  );
+  @override
+  late final GeneratedColumn<String> searchText = GeneratedColumn<String>(
+    'search_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    poemId,
+    startToken,
+    endToken,
+    searchText,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'poem_passages';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PoemPassage> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('poem_id')) {
+      context.handle(
+        _poemIdMeta,
+        poemId.isAcceptableOrUnknown(data['poem_id']!, _poemIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_poemIdMeta);
+    }
+    if (data.containsKey('start_token')) {
+      context.handle(
+        _startTokenMeta,
+        startToken.isAcceptableOrUnknown(data['start_token']!, _startTokenMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_startTokenMeta);
+    }
+    if (data.containsKey('end_token')) {
+      context.handle(
+        _endTokenMeta,
+        endToken.isAcceptableOrUnknown(data['end_token']!, _endTokenMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_endTokenMeta);
+    }
+    if (data.containsKey('search_text')) {
+      context.handle(
+        _searchTextMeta,
+        searchText.isAcceptableOrUnknown(data['search_text']!, _searchTextMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_searchTextMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PoemPassage map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PoemPassage(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      poemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}poem_id'],
+      )!,
+      startToken: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}start_token'],
+      )!,
+      endToken: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}end_token'],
+      )!,
+      searchText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}search_text'],
+      )!,
+    );
+  }
+
+  @override
+  $PoemPassagesTable createAlias(String alias) {
+    return $PoemPassagesTable(attachedDatabase, alias);
+  }
+}
+
+class PoemPassage extends DataClass implements Insertable<PoemPassage> {
+  final int id;
+  final int poemId;
+  final int startToken;
+  final int endToken;
+  final String searchText;
+  const PoemPassage({
+    required this.id,
+    required this.poemId,
+    required this.startToken,
+    required this.endToken,
+    required this.searchText,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['poem_id'] = Variable<int>(poemId);
+    map['start_token'] = Variable<int>(startToken);
+    map['end_token'] = Variable<int>(endToken);
+    map['search_text'] = Variable<String>(searchText);
+    return map;
+  }
+
+  PoemPassagesCompanion toCompanion(bool nullToAbsent) {
+    return PoemPassagesCompanion(
+      id: Value(id),
+      poemId: Value(poemId),
+      startToken: Value(startToken),
+      endToken: Value(endToken),
+      searchText: Value(searchText),
+    );
+  }
+
+  factory PoemPassage.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PoemPassage(
+      id: serializer.fromJson<int>(json['id']),
+      poemId: serializer.fromJson<int>(json['poemId']),
+      startToken: serializer.fromJson<int>(json['startToken']),
+      endToken: serializer.fromJson<int>(json['endToken']),
+      searchText: serializer.fromJson<String>(json['searchText']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'poemId': serializer.toJson<int>(poemId),
+      'startToken': serializer.toJson<int>(startToken),
+      'endToken': serializer.toJson<int>(endToken),
+      'searchText': serializer.toJson<String>(searchText),
+    };
+  }
+
+  PoemPassage copyWith({
+    int? id,
+    int? poemId,
+    int? startToken,
+    int? endToken,
+    String? searchText,
+  }) => PoemPassage(
+    id: id ?? this.id,
+    poemId: poemId ?? this.poemId,
+    startToken: startToken ?? this.startToken,
+    endToken: endToken ?? this.endToken,
+    searchText: searchText ?? this.searchText,
+  );
+  PoemPassage copyWithCompanion(PoemPassagesCompanion data) {
+    return PoemPassage(
+      id: data.id.present ? data.id.value : this.id,
+      poemId: data.poemId.present ? data.poemId.value : this.poemId,
+      startToken: data.startToken.present
+          ? data.startToken.value
+          : this.startToken,
+      endToken: data.endToken.present ? data.endToken.value : this.endToken,
+      searchText: data.searchText.present
+          ? data.searchText.value
+          : this.searchText,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PoemPassage(')
+          ..write('id: $id, ')
+          ..write('poemId: $poemId, ')
+          ..write('startToken: $startToken, ')
+          ..write('endToken: $endToken, ')
+          ..write('searchText: $searchText')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, poemId, startToken, endToken, searchText);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PoemPassage &&
+          other.id == this.id &&
+          other.poemId == this.poemId &&
+          other.startToken == this.startToken &&
+          other.endToken == this.endToken &&
+          other.searchText == this.searchText);
+}
+
+class PoemPassagesCompanion extends UpdateCompanion<PoemPassage> {
+  final Value<int> id;
+  final Value<int> poemId;
+  final Value<int> startToken;
+  final Value<int> endToken;
+  final Value<String> searchText;
+  const PoemPassagesCompanion({
+    this.id = const Value.absent(),
+    this.poemId = const Value.absent(),
+    this.startToken = const Value.absent(),
+    this.endToken = const Value.absent(),
+    this.searchText = const Value.absent(),
+  });
+  PoemPassagesCompanion.insert({
+    this.id = const Value.absent(),
+    required int poemId,
+    required int startToken,
+    required int endToken,
+    required String searchText,
+  }) : poemId = Value(poemId),
+       startToken = Value(startToken),
+       endToken = Value(endToken),
+       searchText = Value(searchText);
+  static Insertable<PoemPassage> custom({
+    Expression<int>? id,
+    Expression<int>? poemId,
+    Expression<int>? startToken,
+    Expression<int>? endToken,
+    Expression<String>? searchText,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (poemId != null) 'poem_id': poemId,
+      if (startToken != null) 'start_token': startToken,
+      if (endToken != null) 'end_token': endToken,
+      if (searchText != null) 'search_text': searchText,
+    });
+  }
+
+  PoemPassagesCompanion copyWith({
+    Value<int>? id,
+    Value<int>? poemId,
+    Value<int>? startToken,
+    Value<int>? endToken,
+    Value<String>? searchText,
+  }) {
+    return PoemPassagesCompanion(
+      id: id ?? this.id,
+      poemId: poemId ?? this.poemId,
+      startToken: startToken ?? this.startToken,
+      endToken: endToken ?? this.endToken,
+      searchText: searchText ?? this.searchText,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (poemId.present) {
+      map['poem_id'] = Variable<int>(poemId.value);
+    }
+    if (startToken.present) {
+      map['start_token'] = Variable<int>(startToken.value);
+    }
+    if (endToken.present) {
+      map['end_token'] = Variable<int>(endToken.value);
+    }
+    if (searchText.present) {
+      map['search_text'] = Variable<String>(searchText.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PoemPassagesCompanion(')
+          ..write('id: $id, ')
+          ..write('poemId: $poemId, ')
+          ..write('startToken: $startToken, ')
+          ..write('endToken: $endToken, ')
+          ..write('searchText: $searchText')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1083,6 +1611,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AuthorsTable authors = $AuthorsTable(this);
   late final $PoemAuthorsTable poemAuthors = $PoemAuthorsTable(this);
   late final $MetadataTable metadata = $MetadataTable(this);
+  late final $PoemPassagesTable poemPassages = $PoemPassagesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1092,6 +1621,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     authors,
     poemAuthors,
     metadata,
+    poemPassages,
   ];
 }
 
@@ -1103,6 +1633,9 @@ typedef $$PoemsTableCreateCompanionBuilder =
       required String body,
       Value<String?> year,
       Value<String?> altTitles,
+      required String poemKey,
+      required String language,
+      required String contentHash,
     });
 typedef $$PoemsTableUpdateCompanionBuilder =
     PoemsCompanion Function({
@@ -1112,6 +1645,9 @@ typedef $$PoemsTableUpdateCompanionBuilder =
       Value<String> body,
       Value<String?> year,
       Value<String?> altTitles,
+      Value<String> poemKey,
+      Value<String> language,
+      Value<String> contentHash,
     });
 
 final class $$PoemsTableReferences
@@ -1131,6 +1667,24 @@ final class $$PoemsTableReferences
     ).filter((f) => f.poemId.id.sqlEquals($_itemColumn<int>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_poemAuthorsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$PoemPassagesTable, List<PoemPassage>>
+  _poemPassagesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.poemPassages,
+    aliasName: $_aliasNameGenerator(db.poems.id, db.poemPassages.poemId),
+  );
+
+  $$PoemPassagesTableProcessedTableManager get poemPassagesRefs {
+    final manager = $$PoemPassagesTableTableManager(
+      $_db,
+      $_db.poemPassages,
+    ).filter((f) => f.poemId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_poemPassagesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1175,6 +1729,21 @@ class $$PoemsTableFilterComposer extends Composer<_$AppDatabase, $PoemsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get poemKey => $composableBuilder(
+    column: $table.poemKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> poemAuthorsRefs(
     Expression<bool> Function($$PoemAuthorsTableFilterComposer f) f,
   ) {
@@ -1191,6 +1760,31 @@ class $$PoemsTableFilterComposer extends Composer<_$AppDatabase, $PoemsTable> {
           }) => $$PoemAuthorsTableFilterComposer(
             $db: $db,
             $table: $db.poemAuthors,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> poemPassagesRefs(
+    Expression<bool> Function($$PoemPassagesTableFilterComposer f) f,
+  ) {
+    final $$PoemPassagesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.poemPassages,
+      getReferencedColumn: (t) => t.poemId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PoemPassagesTableFilterComposer(
+            $db: $db,
+            $table: $db.poemPassages,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1239,6 +1833,21 @@ class $$PoemsTableOrderingComposer
     column: $table.altTitles,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get poemKey => $composableBuilder(
+    column: $table.poemKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PoemsTableAnnotationComposer
@@ -1270,6 +1879,17 @@ class $$PoemsTableAnnotationComposer
   GeneratedColumn<String> get altTitles =>
       $composableBuilder(column: $table.altTitles, builder: (column) => column);
 
+  GeneratedColumn<String> get poemKey =>
+      $composableBuilder(column: $table.poemKey, builder: (column) => column);
+
+  GeneratedColumn<String> get language =>
+      $composableBuilder(column: $table.language, builder: (column) => column);
+
+  GeneratedColumn<String> get contentHash => $composableBuilder(
+    column: $table.contentHash,
+    builder: (column) => column,
+  );
+
   Expression<T> poemAuthorsRefs<T extends Object>(
     Expression<T> Function($$PoemAuthorsTableAnnotationComposer a) f,
   ) {
@@ -1294,6 +1914,31 @@ class $$PoemsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> poemPassagesRefs<T extends Object>(
+    Expression<T> Function($$PoemPassagesTableAnnotationComposer a) f,
+  ) {
+    final $$PoemPassagesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.poemPassages,
+      getReferencedColumn: (t) => t.poemId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PoemPassagesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.poemPassages,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$PoemsTableTableManager
@@ -1309,7 +1954,7 @@ class $$PoemsTableTableManager
           $$PoemsTableUpdateCompanionBuilder,
           (Poem, $$PoemsTableReferences),
           Poem,
-          PrefetchHooks Function({bool poemAuthorsRefs})
+          PrefetchHooks Function({bool poemAuthorsRefs, bool poemPassagesRefs})
         > {
   $$PoemsTableTableManager(_$AppDatabase db, $PoemsTable table)
     : super(
@@ -1330,6 +1975,9 @@ class $$PoemsTableTableManager
                 Value<String> body = const Value.absent(),
                 Value<String?> year = const Value.absent(),
                 Value<String?> altTitles = const Value.absent(),
+                Value<String> poemKey = const Value.absent(),
+                Value<String> language = const Value.absent(),
+                Value<String> contentHash = const Value.absent(),
               }) => PoemsCompanion(
                 id: id,
                 title: title,
@@ -1337,6 +1985,9 @@ class $$PoemsTableTableManager
                 body: body,
                 year: year,
                 altTitles: altTitles,
+                poemKey: poemKey,
+                language: language,
+                contentHash: contentHash,
               ),
           createCompanionCallback:
               ({
@@ -1346,6 +1997,9 @@ class $$PoemsTableTableManager
                 required String body,
                 Value<String?> year = const Value.absent(),
                 Value<String?> altTitles = const Value.absent(),
+                required String poemKey,
+                required String language,
+                required String contentHash,
               }) => PoemsCompanion.insert(
                 id: id,
                 title: title,
@@ -1353,6 +2007,9 @@ class $$PoemsTableTableManager
                 body: body,
                 year: year,
                 altTitles: altTitles,
+                poemKey: poemKey,
+                language: language,
+                contentHash: contentHash,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -1360,28 +2017,63 @@ class $$PoemsTableTableManager
                     (e.readTable(table), $$PoemsTableReferences(db, table, e)),
               )
               .toList(),
-          prefetchHooksCallback: ({poemAuthorsRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (poemAuthorsRefs) db.poemAuthors],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (poemAuthorsRefs)
-                    await $_getPrefetchedData<Poem, $PoemsTable, PoemAuthor>(
-                      currentTable: table,
-                      referencedTable: $$PoemsTableReferences
-                          ._poemAuthorsRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$PoemsTableReferences(db, table, p0).poemAuthorsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.poemId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({poemAuthorsRefs = false, poemPassagesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (poemAuthorsRefs) db.poemAuthors,
+                    if (poemPassagesRefs) db.poemPassages,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (poemAuthorsRefs)
+                        await $_getPrefetchedData<
+                          Poem,
+                          $PoemsTable,
+                          PoemAuthor
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PoemsTableReferences
+                              ._poemAuthorsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PoemsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).poemAuthorsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.poemId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (poemPassagesRefs)
+                        await $_getPrefetchedData<
+                          Poem,
+                          $PoemsTable,
+                          PoemPassage
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PoemsTableReferences
+                              ._poemPassagesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PoemsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).poemPassagesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.poemId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -1398,7 +2090,7 @@ typedef $$PoemsTableProcessedTableManager =
       $$PoemsTableUpdateCompanionBuilder,
       (Poem, $$PoemsTableReferences),
       Poem,
-      PrefetchHooks Function({bool poemAuthorsRefs})
+      PrefetchHooks Function({bool poemAuthorsRefs, bool poemPassagesRefs})
     >;
 typedef $$AuthorsTableCreateCompanionBuilder =
     AuthorsCompanion Function({
@@ -2140,6 +2832,322 @@ typedef $$MetadataTableProcessedTableManager =
       MetadataData,
       PrefetchHooks Function()
     >;
+typedef $$PoemPassagesTableCreateCompanionBuilder =
+    PoemPassagesCompanion Function({
+      Value<int> id,
+      required int poemId,
+      required int startToken,
+      required int endToken,
+      required String searchText,
+    });
+typedef $$PoemPassagesTableUpdateCompanionBuilder =
+    PoemPassagesCompanion Function({
+      Value<int> id,
+      Value<int> poemId,
+      Value<int> startToken,
+      Value<int> endToken,
+      Value<String> searchText,
+    });
+
+final class $$PoemPassagesTableReferences
+    extends BaseReferences<_$AppDatabase, $PoemPassagesTable, PoemPassage> {
+  $$PoemPassagesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PoemsTable _poemIdTable(_$AppDatabase db) => db.poems.createAlias(
+    $_aliasNameGenerator(db.poemPassages.poemId, db.poems.id),
+  );
+
+  $$PoemsTableProcessedTableManager get poemId {
+    final $_column = $_itemColumn<int>('poem_id')!;
+
+    final manager = $$PoemsTableTableManager(
+      $_db,
+      $_db.poems,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_poemIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$PoemPassagesTableFilterComposer
+    extends Composer<_$AppDatabase, $PoemPassagesTable> {
+  $$PoemPassagesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get startToken => $composableBuilder(
+    column: $table.startToken,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get endToken => $composableBuilder(
+    column: $table.endToken,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PoemsTableFilterComposer get poemId {
+    final $$PoemsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.poemId,
+      referencedTable: $db.poems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PoemsTableFilterComposer(
+            $db: $db,
+            $table: $db.poems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PoemPassagesTableOrderingComposer
+    extends Composer<_$AppDatabase, $PoemPassagesTable> {
+  $$PoemPassagesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get startToken => $composableBuilder(
+    column: $table.startToken,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get endToken => $composableBuilder(
+    column: $table.endToken,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PoemsTableOrderingComposer get poemId {
+    final $$PoemsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.poemId,
+      referencedTable: $db.poems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PoemsTableOrderingComposer(
+            $db: $db,
+            $table: $db.poems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PoemPassagesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PoemPassagesTable> {
+  $$PoemPassagesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get startToken => $composableBuilder(
+    column: $table.startToken,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get endToken =>
+      $composableBuilder(column: $table.endToken, builder: (column) => column);
+
+  GeneratedColumn<String> get searchText => $composableBuilder(
+    column: $table.searchText,
+    builder: (column) => column,
+  );
+
+  $$PoemsTableAnnotationComposer get poemId {
+    final $$PoemsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.poemId,
+      referencedTable: $db.poems,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PoemsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.poems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$PoemPassagesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PoemPassagesTable,
+          PoemPassage,
+          $$PoemPassagesTableFilterComposer,
+          $$PoemPassagesTableOrderingComposer,
+          $$PoemPassagesTableAnnotationComposer,
+          $$PoemPassagesTableCreateCompanionBuilder,
+          $$PoemPassagesTableUpdateCompanionBuilder,
+          (PoemPassage, $$PoemPassagesTableReferences),
+          PoemPassage,
+          PrefetchHooks Function({bool poemId})
+        > {
+  $$PoemPassagesTableTableManager(_$AppDatabase db, $PoemPassagesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PoemPassagesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PoemPassagesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PoemPassagesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> poemId = const Value.absent(),
+                Value<int> startToken = const Value.absent(),
+                Value<int> endToken = const Value.absent(),
+                Value<String> searchText = const Value.absent(),
+              }) => PoemPassagesCompanion(
+                id: id,
+                poemId: poemId,
+                startToken: startToken,
+                endToken: endToken,
+                searchText: searchText,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int poemId,
+                required int startToken,
+                required int endToken,
+                required String searchText,
+              }) => PoemPassagesCompanion.insert(
+                id: id,
+                poemId: poemId,
+                startToken: startToken,
+                endToken: endToken,
+                searchText: searchText,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$PoemPassagesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({poemId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (poemId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.poemId,
+                                referencedTable: $$PoemPassagesTableReferences
+                                    ._poemIdTable(db),
+                                referencedColumn: $$PoemPassagesTableReferences
+                                    ._poemIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$PoemPassagesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PoemPassagesTable,
+      PoemPassage,
+      $$PoemPassagesTableFilterComposer,
+      $$PoemPassagesTableOrderingComposer,
+      $$PoemPassagesTableAnnotationComposer,
+      $$PoemPassagesTableCreateCompanionBuilder,
+      $$PoemPassagesTableUpdateCompanionBuilder,
+      (PoemPassage, $$PoemPassagesTableReferences),
+      PoemPassage,
+      PrefetchHooks Function({bool poemId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2152,4 +3160,6 @@ class $AppDatabaseManager {
       $$PoemAuthorsTableTableManager(_db, _db.poemAuthors);
   $$MetadataTableTableManager get metadata =>
       $$MetadataTableTableManager(_db, _db.metadata);
+  $$PoemPassagesTableTableManager get poemPassages =>
+      $$PoemPassagesTableTableManager(_db, _db.poemPassages);
 }

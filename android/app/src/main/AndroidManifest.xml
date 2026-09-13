@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- First-run corpus/model downloads and update checks. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="${appName}"
         android:name="${applicationName}"

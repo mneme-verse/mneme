@@ -118,6 +118,22 @@ void main() {
       );
     });
 
+    test('throws if the local manifest is not an object', () async {
+      when(mockManifestFile.readAsString()).thenAnswer((_) async => '[]');
+      final publisher = DataPublisher(
+        dbOutputDir: 'assets/database',
+        processRunner: mockProcessRunner,
+        fs: mockFs,
+      );
+
+      expect(
+        publisher.publish(),
+        throwsA(
+          predicate((e) => e.toString().contains('not a JSON object')),
+        ),
+      );
+    });
+
     test('successfully releases new version', () async {
       final publisher = DataPublisher(
         dbOutputDir: 'assets/database',
@@ -139,6 +155,87 @@ void main() {
       expect(commandLog[2], contains('gh release upload data-v1.0+1'));
       expect(commandLog[2], contains('assets/database/en.db.zst'));
       expect(commandLog[2], contains('assets/database/manifest.json'));
+    });
+
+    test('merges with the published manifest on existing releases', () async {
+      Future<ProcessResult> existingRunner(
+        String executable,
+        List<String> args, {
+        bool runInShell = false,
+      }) async {
+        commandLog.add('$executable ${args.join(" ")}');
+        if (args.contains('view')) {
+          return ProcessResult(0, 0, '', '');
+        }
+        if (args.contains('download')) {
+          final dir = args[args.indexOf('--dir') + 1];
+          File('$dir/manifest.json').writeAsStringSync(
+            jsonEncode({
+              'license': {'text': 'dummy'},
+              'en': {'version': '1.0+1', 'file': 'en.db.zst'},
+            }),
+          );
+          return ProcessResult(0, 0, '', '');
+        }
+        return ProcessResult(0, 0, '', '');
+      }
+
+      final publisher = DataPublisher(
+        dbOutputDir: 'assets/database',
+        processRunner: existingRunner,
+        fs: mockFs,
+      );
+
+      await publisher.publish();
+
+      final upload = commandLog.firstWhere((entry) => entry.contains('upload'));
+      // The merged manifest lives outside the local database dir.
+      expect(upload, contains('mneme-publish'));
+      expect(upload, isNot(contains('assets/database/manifest.json')));
+      expect(upload, contains('assets/database/en.db.zst'));
+    });
+
+    test('aborts instead of clobbering on merge failure', () async {
+      final publisher = DataPublisher(
+        dbOutputDir: 'assets/database',
+        processRunner: (executable, args, {runInShell = false}) {
+          commandLog.add('$executable ${args.join(" ")}');
+          if (args.contains('--json')) {
+            // The release already publishes a manifest...
+            return Future.value(
+              ProcessResult(0, 0, 'manifest.json\nen.db.zst', ''),
+            );
+          }
+          // ...but its download fails transiently.
+          return Future.value(
+            ProcessResult(0, args.contains('view') ? 0 : 1, '', 'gone'),
+          );
+        },
+        fs: mockFs,
+      );
+      await expectLater(publisher.publish(), throwsException);
+      expect(
+        commandLog.any((entry) => entry.contains('upload')),
+        isFalse,
+        reason: 'no upload may run when the merge cannot be read',
+      );
+    });
+
+    test('mergeManifests keeps other languages and lets local win', () {
+      final merged = mergeManifests(
+        {
+          'license': {'text': 'dummy'},
+          'en': {'version': '1.0+1'},
+          'ru': {'version': 'stale'},
+        },
+        {
+          'ru': {'version': '1.0+2'},
+        },
+      );
+
+      expect(merged['license'], {'text': 'dummy'});
+      expect(merged['en'], {'version': '1.0+1'});
+      expect(merged['ru'], {'version': '1.0+2'});
     });
   });
 }
