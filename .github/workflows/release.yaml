@@ -1,10 +1,14 @@
 # Release publication.
 #
-# App: pushing a tag `v*` builds a signed production arm64 APK and attaches
-# it (plus its SHA-256) to the GitHub Release for that tag. App release
-# tags (`v*`) and corpus data tags (`data-v*`) stay separate.
+# App: pushing a tag `v*` builds a production arm64 APK and attaches it
+# (plus its SHA-256) to the GitHub Release for that tag. App release tags
+# (`v*`) and corpus data tags (`data-v*`) stay separate.
 #
-# Required repository secrets (Settings > Secrets > Actions):
+# Signing: while no stable release keystore exists, the APK is signed with
+# an ephemeral debug key generated inside the run. Such artifacts are for
+# sideload testing only: they carry no stable update identity and must
+# never be presented as the production release. To cut a stable release,
+# set these repository secrets (Settings > Secrets > Actions) and retag:
 # - ANDROID_KEYSTORE_BASE64: base64 of the stable release keystore. Never
 #   commit the keystore or regenerate it casually: Android treats a new
 #   certificate as a different app identity.
@@ -54,20 +58,39 @@ jobs:
       - name: 📦 Install Dependencies
         run: flutter pub get
 
-      - name: 🔑 Restore release keystore
+      - name: 🔑 Keystore (stable secret or ephemeral debug)
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SECRET_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          SECRET_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SECRET_KEY_PASS: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
         run: |
-          test -n "$ANDROID_KEYSTORE_BASE64" || \
-            (echo 'missing ANDROID_KEYSTORE_BASE64 secret' >&2; exit 1)
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+            echo "KEYSTORE_PATH=${{ github.workspace }}/android/app/release.keystore" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$SECRET_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_STORE_PASS=$SECRET_STORE_PASS" >> "$GITHUB_ENV"
+            echo "KEY_KEY_PASS=$SECRET_KEY_PASS" >> "$GITHUB_ENV"
+            echo "APK_LABEL=signed" >> "$GITHUB_ENV"
+          else
+            keytool -genkeypair \
+              -keystore /tmp/mneme-debug.keystore -alias mneme-debug \
+              -keyalg RSA -keysize 2048 -validity 90 \
+              -storepass mneme-debug -keypass mneme-debug \
+              -dname 'CN=Mneme ephemeral debug, OU=dev, O=mneme-verse'
+            echo "KEYSTORE_PATH=/tmp/mneme-debug.keystore" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=mneme-debug" >> "$GITHUB_ENV"
+            echo "KEY_STORE_PASS=mneme-debug" >> "$GITHUB_ENV"
+            echo "KEY_KEY_PASS=mneme-debug" >> "$GITHUB_ENV"
+            echo "APK_LABEL=debug-signed" >> "$GITHUB_ENV"
+          fi
 
-      - name: 🏗️ Build signed production APK
+      - name: 🏗️ Build production APK
         env:
-          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore
-          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_ALIAS: ${{ env.KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASS }}
+          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ env.KEY_KEY_PASS }}
         run: >
           flutter build apk --release --flavor production
           -t lib/main_production.dart --target-platform android-arm64
@@ -76,9 +99,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          apk=build/app/outputs/flutter-apk/app-production-release.apk
-          sha256sum "$apk" | tee "$apk.sha256"
-          gh release upload "$GITHUB_REF_NAME" "$apk" "$apk.sha256" --clobber
+          src=build/app/outputs/flutter-apk/app-production-release.apk
+          out="mneme-${GITHUB_REF_NAME}-production-${APK_LABEL}.apk"
+          cp "$src" "$out"
+          sha256sum "$out" | tee "$out.sha256"
+          if [ "$APK_LABEL" = "debug-signed" ]; then
+            notes='Sideload testing only: ephemeral debug signature, no stable update identity. Not the production release.'
+          else
+            notes='Production release APK with SHA-256 checksum.'
+          fi
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$notes"
+          gh release upload "$GITHUB_REF_NAME" "$out" "$out.sha256" --clobber
 
   corpus-data:
     if: inputs.corpus_language != ''
