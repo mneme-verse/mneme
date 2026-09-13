@@ -206,6 +206,38 @@ void main() {
     });
   });
 
+  group('StudyView', () {
+    late StudyCubit cubit;
+
+    setUp(() => cubit = MockStudyCubit());
+
+    testWidgets('queue failure renders the message', (tester) async {
+      whenListen(
+        cubit,
+        const Stream<StudyState>.empty(),
+        initialState: const StudyError('db gone'),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(value: cubit, child: const StudyView()),
+      );
+      expect(find.text('db gone'), findsOneWidget);
+    });
+
+    testWidgets('empty queue explains nothing is due', (tester) async {
+      whenListen(
+        cubit,
+        const Stream<StudyState>.empty(),
+        initialState: const StudyLoaded([]),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(value: cubit, child: const StudyView()),
+      );
+      expect(find.text('Nothing due'), findsOneWidget);
+    });
+  });
+
   group('StudyView navigation', () {
     testWidgets('tapping a due row opens the review reader', (tester) async {
       driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -214,6 +246,24 @@ void main() {
       await seedDatabase(db, language: 'en');
       final poetry = PoetryRepository(db);
       final StudyCubit cubit = MockStudyCubit();
+      when(cubit.load).thenAnswer((_) async {});
+      final study = MockStudyRepository();
+      registerFallbackValue(fsrs.Rating.good);
+      when(
+        () => study.submitReview(
+          poemKey: any(named: 'poemKey'),
+          rating: any(named: 'rating'),
+        ),
+      ).thenAnswer(
+        (_) async => (
+          card: fsrs.Card(cardId: 1),
+          log: fsrs.ReviewLog(
+            cardId: 1,
+            rating: fsrs.Rating.good,
+            reviewDateTime: DateTime.utc(2026, 9, 13),
+          ),
+        ),
+      );
       whenListen(
         cubit,
         const Stream<StudyState>.empty(),
@@ -225,11 +275,18 @@ void main() {
         tester,
         BlocProvider.value(value: cubit, child: const StudyView()),
         poetry: poetry,
-        study: MockStudyRepository(),
+        study: study,
       );
       await tester.tap(find.text('The Raven'));
       await tester.pumpAndSettle();
-      expect(find.text('Good'), findsOneWidget);
+      await tester.tap(find.text('Good'));
+      await tester.pumpAndSettle();
+      verify(
+        () => study.submitReview(
+          poemKey: 'poetree:en:raven',
+          rating: fsrs.Rating.good,
+        ),
+      ).called(1);
     });
   });
 
@@ -241,6 +298,22 @@ void main() {
       await seedDatabase(db, language: 'en');
       final poetry = PoetryRepository(db);
       final StudyCubit cubit = MockStudyCubit();
+      final study = MockStudyRepository();
+      when(
+        () => study.submitReview(
+          poemKey: any(named: 'poemKey'),
+          rating: any(named: 'rating'),
+        ),
+      ).thenAnswer(
+        (_) async => (
+          card: fsrs.Card(cardId: 1),
+          log: fsrs.ReviewLog(
+            cardId: 1,
+            rating: fsrs.Rating.good,
+            reviewDateTime: DateTime.utc(2026, 9, 13),
+          ),
+        ),
+      );
       var loads = 0;
 
       Future<void> countLoad(_) async {

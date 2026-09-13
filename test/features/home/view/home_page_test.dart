@@ -203,17 +203,33 @@ void main() {
 
         // Jump to end
         scrollController.jumpTo(scrollController.position.maxScrollExtent);
-        await tester.pumpAndSettle();
+        await tester.pump();
 
-        // Verify fetchAuthors was NOT called with offset
-        verifyNever(() => homeCubit.fetchAuthors(offset: 5));
+        verifyNever(() => homeCubit.fetchAuthors(offset: any(named: 'offset')));
       },
     );
-  });
-  group('HomePage', () {
-    test('route builds the home page', () {
-      final route = HomePage.route(language: 'en');
-      expect(route, isA<MaterialPageRoute<void>>());
+
+    testWidgets('route navigates to the home page', (tester) async {
+      await tester.pumpWidget(
+        RepositoryProvider.value(
+          value: poetryRepository,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  HomePage.route(language: 'en'),
+                ),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      expect(find.text('Authors'), findsOneWidget);
     });
   });
 }

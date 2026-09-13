@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mneme/features/reader/view/reader_page.dart';
@@ -44,31 +46,47 @@ class StudyView extends StatelessWidget {
               child: CircularProgressIndicator(),
             ),
             StudyError(:final message) => Center(child: Text(message)),
-            StudyLoaded(:final due) =>
-              due.isEmpty
-                  ? Center(child: Text(context.l10n.nothingDue))
-                  : ListView.builder(
-                      itemCount: due.length,
-                      itemBuilder: (context, index) {
-                        final item = due[index];
-                        return ListTile(
-                          title: Text(item.title),
-                          subtitle: Text(item.authorNames),
-                          onTap: () async {
-                            final graded = await Navigator.of(context).push(
-                              ReaderPage.route(
-                                poemId: item.poemId,
-                                reviewMode: true,
-                              ),
-                            );
-                            if (graded == true && context.mounted) {}
-                          },
-                        );
-                      },
-                    ),
+            StudyLoaded(:final due) => _DueBody(due: due),
           };
         },
       ),
     );
+  }
+}
+
+/// Due queue body; a method (not a ternary arm) so both branches
+/// attribute coverage lines independently.
+class _DueBody extends StatelessWidget {
+  const _DueBody({required this.due});
+
+  /// Due reviews, earliest first.
+  final List<DueReview> due;
+
+  @override
+  Widget build(BuildContext context) {
+    if (due.isEmpty) {
+      return Center(child: Text(context.l10n.nothingDue));
+    }
+    return ListView.builder(
+      itemCount: due.length,
+      itemBuilder: (context, index) {
+        final item = due[index];
+        return ListTile(
+          title: Text(item.title),
+          subtitle: Text(item.authorNames),
+          onTap: () => _openReview(context, item.poemId),
+        );
+      },
+    );
+  }
+
+  /// Opens the review reader; a recorded grade pops back and refreshes.
+  Future<void> _openReview(BuildContext context, int poemId) async {
+    final graded = await Navigator.of(context).push(
+      ReaderPage.route(poemId: poemId, reviewMode: true),
+    );
+    if (graded == true && context.mounted) {
+      unawaited(context.read<StudyCubit>().load());
+    }
   }
 }
