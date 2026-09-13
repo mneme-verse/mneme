@@ -96,7 +96,7 @@ jobs:
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ env.KEY_KEY_PASS }}
         run: |
           set +e
-          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 > /tmp/apk.log 2>&1
+          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 --android-project-arg=shrink=false > /tmp/apk.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
             detail=$(grep -A10 'What went wrong' /tmp/apk.log | head -n 25 | tr '\n' '|')

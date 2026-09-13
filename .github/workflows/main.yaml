@@ -81,7 +81,10 @@ jobs:
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: mneme-debug
         run: |
           set +e
-          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 > /tmp/apk.log 2>&1
+          # The Flutter Gradle plugin force-enables R8 for release builds
+          # (shouldShrinkResources defaults true); opt out until shrinking
+          # proves itself in this gate without blocking releases.
+          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 --android-project-arg=shrink=false > /tmp/apk.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
             detail=$(grep -A10 'What went wrong' /tmp/apk.log | head -n 25 | tr '\n' '|')
