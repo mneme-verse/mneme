@@ -245,12 +245,12 @@ void main() {
 
   test('exceptions describe the failed resource', () {
     expect(
-      const InstallCanceledException('ru.db.zst').toString(),
-      contains('ru.db.zst'),
+      const InstallCanceledException('ru.db.gz').toString(),
+      contains('ru.db.gz'),
     );
     expect(
-      const HashMismatchException('ru.db.zst', 'abc').toString(),
-      contains('ru.db.zst'),
+      const HashMismatchException('ru.db.gz', 'abc').toString(),
+      contains('ru.db.gz'),
     );
   });
 

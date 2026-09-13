@@ -67,7 +67,7 @@ class CorpusManifestClient {
   ///
   /// Throws [CorpusManifestException] for missing entries or entries that
   /// violate the schema-two contract (`sha256` hex, positive size,
-  /// `schema_version` 2, file exactly `<language>.db.zst`).
+  /// `schema_version` 2, file exactly `<language>.db.gz`).
   Future<CorpusPackInfo> packFor(String language) async {
     final response = await _client.get(manifestUrl);
     if (response.statusCode != 200) {
@@ -115,14 +115,14 @@ class CorpusManifestClient {
       );
     }
 
-    // The connection layer probes `<language>.db.zst` and the installer
+    // The connection layer probes `<language>.db.gz` and the installer
     // treats the id as a plain file name, so the manifest filename must
     // be exactly the language-keyed pack: anything else would install a
     // file the app never opens.
     final file = entry['file'];
-    if (file is! String || file != '$language.db.zst') {
+    if (file is! String || file != '$language.db.gz') {
       throw CorpusManifestException(
-        'entry "$language" must name "$language.db.zst"',
+        'entry "$language" must name "$language.db.gz"',
       );
     }
 

@@ -206,7 +206,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // Pack filenames are language-keyed by the manifest contract, and the
     // model is the injected one, not necessarily the default.
     _resources
-      ..cancel('$language.db.zst')
+      ..cancel('$language.db.gz')
       ..cancel(_speechModel.id);
   }
 

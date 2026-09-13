@@ -61,14 +61,14 @@ class DataPublisher {
       throw Exception('Database directory $dbOutputDir not found.');
     }
 
-    final zstFiles = dbDir
+    final gzFiles = dbDir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.db.zst'))
+        .where((f) => f.path.endsWith('.db.gz'))
         .toList();
 
-    if (zstFiles.isEmpty) {
-      throw Exception('No .db.zst files found in $dbOutputDir.');
+    if (gzFiles.isEmpty) {
+      throw Exception('No .db.gz files found in $dbOutputDir.');
     }
 
     final manifestFile = fs.file(path.join(dbDir.path, 'manifest.json'));
@@ -85,7 +85,7 @@ class DataPublisher {
       throw Exception('Local manifest is not a JSON object.');
     }
     final manifest = decodedManifest;
-    print('✅ Artifacts valid (${zstFiles.length} files + manifest)');
+    print('✅ Artifacts valid (${gzFiles.length} files + manifest)');
 
     // 3. Prepare Release Info
     String? version;
@@ -153,7 +153,7 @@ class DataPublisher {
       // 6. Upload Assets
       print('📤 Uploading assets...');
       final assetPaths = [
-        ...zstFiles.map((f) => f.path),
+        ...gzFiles.map((f) => f.path),
         manifestPath,
       ];
 

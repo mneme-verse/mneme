@@ -53,7 +53,9 @@ class HomeCubit extends Cubit<HomeState> {
           );
         }
       }
-    } on Exception catch (e) {
+    } on Object catch (e) {
+      // Catch Error as well as Exception: native/FFI failures (e.g. a
+      // missing codec library) surface as Error and must not spin forever.
       emit(HomeError(e.toString()));
     }
   }

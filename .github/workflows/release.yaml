@@ -17,7 +17,7 @@
 # - ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD
 #
 # Corpus data: run this workflow manually with a language to build its
-# `.db.zst` pack (tool/builder.dart) and publish it to the `data-v*`
+# `.db.gz` pack (tool/builder.dart) and publish it to the `data-v*`
 # release (tool/publish_data.dart). No signing secrets are needed.
 name: release
 
@@ -169,7 +169,7 @@ jobs:
             tail -n 30 /tmp/builder.log
             exit $code
           fi
-          count=$(ls assets/database/*.db.zst 2>/dev/null | wc -l)
+          count=$(ls assets/database/*.db.gz 2>/dev/null | wc -l)
           if [ "$count" -eq 0 ]; then
             echo "::error::builder produced no packs: $(grep -e '❌' -e 'Downloaded' -e 'download' /tmp/builder.log | head -n 6 | tr '\n' '|')"
             tail -n 30 /tmp/builder.log

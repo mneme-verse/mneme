@@ -82,7 +82,7 @@ class _AppState extends State<App> {
         completed &&
         language != null &&
         widget.resources.isModelPresent(model.id) &&
-        widget.resources.isCorpusPackPresent('$language.db.zst') &&
+        widget.resources.isCorpusPackPresent('$language.db.gz') &&
         prefs.getString('installed_corpus_version') == corpusDataVersion &&
         prefs.getString('installed_model_id') == model.id &&
         prefs.getString('installed_model_sha256') == model.sha256;

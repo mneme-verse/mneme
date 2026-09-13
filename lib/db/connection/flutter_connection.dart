@@ -3,7 +3,6 @@ import 'dart:isolate';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
-import 'package:es_compression/zstd.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:mneme/db/database.dart';
@@ -13,7 +12,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 /// Opens the corpus database for [name] (`ru`, `en`, ...).
 ///
-/// An installed corpus pack at `<supportDir>/corpora/<name>.db.zst` (placed
+/// An installed corpus pack at `<supportDir>/corpora/<name>.db.gz` (placed
 /// there by `ResourceRepository` after SHA-256 verification) takes
 /// precedence: it is decompressed over the previous `<name>.db`. Without a
 /// pack the bundled asset `assets/database/<name>.db` is copied once.
@@ -28,7 +27,7 @@ QueryExecutor openCorpusConnection({
   return LazyDatabase(() async {
     final dbFolder = documentsDir ?? await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, '$name.db'));
-    final pack = File(p.join(supportDir.path, 'corpora', '$name.db.zst'));
+    final pack = File(p.join(supportDir.path, 'corpora', '$name.db.gz'));
 
     // A v1 file can neither be queried nor migrated in place: drop it so
     // the pack/asset provisioning below reinstalls schema v2.
@@ -38,7 +37,7 @@ QueryExecutor openCorpusConnection({
       // Decompress to a temporary file and rename atomically, so an
       // interruption can never leave a truncated live database behind.
       final compressed = await Isolate.run(() {
-        return ZstdDecoder().convert(File(pack.path).readAsBytesSync());
+        return GZipCodec().decode(File(pack.path).readAsBytesSync());
       });
       final staging = File('${file.path}.tmp');
       await staging.writeAsBytes(compressed, flush: true);

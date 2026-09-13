@@ -122,7 +122,7 @@ void main() {
           return http.Response(
             jsonEncode({
               'en': {
-                'file': 'en.db.zst',
+                'file': 'en.db.gz',
                 'sha256': sha256.convert(packBytes).toString(),
                 'size': packBytes.length,
                 'version': '1.0+2',
@@ -132,7 +132,7 @@ void main() {
             200,
           );
         }
-        if (url == 'https://example.test/en.db.zst') {
+        if (url == 'https://example.test/en.db.gz') {
           return http.Response.bytes(packBytes, 200);
         }
         if (url == model.url) {
@@ -204,6 +204,6 @@ class _AppHarness {
     File(
       '${modelDir.path}/${modelId ?? defaultSpeechModelId}',
     ).writeAsStringSync('gate');
-    File('${corpusDir.path}/$language.db.zst').writeAsStringSync('gate');
+    File('${corpusDir.path}/$language.db.gz').writeAsStringSync('gate');
   }
 }

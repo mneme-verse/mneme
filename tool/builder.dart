@@ -9,7 +9,6 @@ import 'package:archive/archive_io.dart';
 import 'package:args/args.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/native.dart';
-import 'package:es_compression/zstd.dart';
 import 'package:http/http.dart' as http;
 import 'package:mneme/db/database.dart';
 import 'package:mneme/recitation/normalized_text.dart';
@@ -117,12 +116,12 @@ ArgParser _buildArgParser() {
     )
     ..addMultiOption(
       'clean-before',
-      allowed: ['poetree', 'db', 'zst'],
+      allowed: ['poetree', 'db', 'gz'],
       help:
           'Clean specific files BEFORE processing.\n'
           'poetree: Remove .poetree/ directory (ZIP + JSON)\n'
           'db: Remove uncompressed .db files\n'
-          'zst: Remove compressed .db.zst files',
+          'gz: Remove compressed .db.gz files',
     )
     ..addMultiOption(
       'clean-after',
@@ -130,7 +129,7 @@ ArgParser _buildArgParser() {
       help:
           'Clean specific files AFTER processing.\n'
           'poetree: Remove .poetree/ directory (save space)\n'
-          'db: Remove uncompressed .db files (keep only .zst)',
+          'db: Remove uncompressed .db files (keep only .gz)',
     )
     ..addMultiOption(
       'languages',
@@ -160,13 +159,13 @@ EXAMPLES:
     dart run tool/builder.dart --languages=en,ru
 
     # Clean everything and rebuild from scratch
-    dart run tool/builder.dart --clean-before=poetree,db,zst
+    dart run tool/builder.dart --clean-before=poetree,db,gz
 
     # Clean only databases before rebuilding
-    dart run tool/builder.dart --clean-before=db,zst
+    dart run tool/builder.dart --clean-before=db,gz
 
     # Rebuild DBs using existing ZIP/JSON files (auto-detected)
-    dart run tool/builder.dart --clean-before=db,zst
+    dart run tool/builder.dart --clean-before=db,gz
 
     # Clean up .poetree/ directory after building (save disk space)
     dart run tool/builder.dart --clean-after=poetree
@@ -210,8 +209,8 @@ class PoeTreeBuilder {
 
     final dbDir = Directory(dbOutputDir);
 
-    // Clean database files (both .db and .db.zst)
-    if (cleanTargets.contains('db') || cleanTargets.contains('zst')) {
+    // Clean database files (both .db and .db.gz)
+    if (cleanTargets.contains('db') || cleanTargets.contains('gz')) {
       if (dbDir.existsSync()) {
         final entities = dbDir.listSync();
         for (final entity in entities) {
@@ -221,12 +220,12 @@ class PoeTreeBuilder {
           var lang = '';
           var shouldDelete = false;
 
-          // Handle .db.zst files
-          if (cleanTargets.contains('zst') && filename.endsWith('.db.zst')) {
-            lang = filename.substring(0, filename.length - 7); // Remove .db.zst
+          // Handle .db.gz files
+          if (cleanTargets.contains('gz') && filename.endsWith('.db.gz')) {
+            lang = filename.substring(0, filename.length - 6); // Remove .db.gz
             shouldDelete = selectedLanguages.contains(lang);
           }
-          // Handle .db files (not .db.zst)
+          // Handle .db files (not .db.gz)
           else if (cleanTargets.contains('db') && filename.endsWith('.db')) {
             lang = filename.substring(0, filename.length - 3);
             shouldDelete = selectedLanguages.contains(lang);
@@ -263,7 +262,7 @@ class PoeTreeBuilder {
       print('  ✓ Deleted .poetree directory');
     }
 
-    // Clean uncompressed DB files (keep only .zst)
+    // Clean uncompressed DB files (keep only .gz)
     if (cleanTargets.contains('db')) {
       final dbDir = Directory(dbOutputDir);
       if (dbDir.existsSync()) {
@@ -275,7 +274,7 @@ class PoeTreeBuilder {
 
         for (final file in dbFiles) {
           file.deleteSync();
-          print('  ✓ Deleted ${path.basename(file.path)} (kept .zst)');
+          print('  ✓ Deleted ${path.basename(file.path)} (kept .gz)');
         }
       }
     }
@@ -683,7 +682,7 @@ class PoeTreeBuilder {
     }
   }
 
-  /// Compress all generated .db files to .zst using Isolates
+  /// Compress all generated .db files to .gz using Isolates
   Future<void> compressDatabases(List<String> selectedLanguages) async {
     final dbDir = Directory(dbOutputDir);
     if (!dbDir.existsSync()) return;
@@ -700,9 +699,9 @@ class PoeTreeBuilder {
 
         // Recompress when the database is newer than its archive, so a
         // rebuilt database never ships behind a stale pack.
-        final zstFile = File(path.setExtension(f.path, '.db.zst'));
-        if (zstFile.existsSync() &&
-            !f.lastModifiedSync().isAfter(zstFile.lastModifiedSync())) {
+        final gzFile = File(path.setExtension(f.path, '.db.gz'));
+        if (gzFile.existsSync() &&
+            !f.lastModifiedSync().isAfter(gzFile.lastModifiedSync())) {
           print('     ⏭️  Skipping $lang compression (already compressed)');
           return false;
         }
@@ -725,15 +724,15 @@ class PoeTreeBuilder {
     );
   }
 
-  /// Generate manifest.json for all .db.zst files
+  /// Generate manifest.json for all .db.gz files
   Future<void> generateManifest() async {
     final dbDir = Directory(dbOutputDir);
     if (!dbDir.existsSync()) return;
 
-    final zstFiles = dbDir
+    final gzFiles = dbDir
         .listSync()
         .whereType<File>()
-        .where((f) => f.path.endsWith('.db.zst'))
+        .where((f) => f.path.endsWith('.db.gz'))
         .toList();
 
     final manifest = <String, Map<String, dynamic>>{};
@@ -753,10 +752,10 @@ class PoeTreeBuilder {
     // new corpus release.
     const versionObj = corpusDataVersion;
 
-    for (final file in zstFiles) {
+    for (final file in gzFiles) {
       final filename = path.basename(file.path);
-      // Lang code is filename minus ".db.zst"
-      final lang = filename.replaceAll('.db.zst', '');
+      // Lang code is filename minus ".db.gz"
+      final lang = filename.replaceAll('.db.gz', '');
 
       final bytes = await file.readAsBytes();
       final size = bytes.length;
@@ -1065,14 +1064,15 @@ Future<List<Map<String, dynamic>>> runBatchInIsolate(
   );
 }
 
-/// Compress a single file using Zstandard
+/// Compress a single file using GZip.
+///
+/// GZip decodes with `dart:io` on every platform (including Android), where
+/// the previously used Zstandard native blob cannot load.
 Future<void> compressFile(String filePath) async {
   final input = File(filePath);
-  final output = File('$filePath.zst');
+  final output = File('$filePath.gz');
 
   final bytes = await input.readAsBytes();
-  // Use ZstdCodec for compression with max level
-  final codec = ZstdCodec(level: 22);
-  final compressed = codec.encode(bytes);
+  final compressed = GZipCodec(level: 9).encode(bytes);
   await output.writeAsBytes(compressed);
 }
