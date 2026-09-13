@@ -821,7 +821,7 @@ Map<String, dynamic>? extractPoemData(
     final sourceId = data['id']?.toString();
     // Id-less records fall back to a title+body hash so distinct variants
     // keep distinct keys; byte-identical duplicates still share a key and
-    // are dropped by the pre-insert dedup instead of failing the build.
+    // are dropped as duplicates before insert instead of failing the build.
     final identity = sourceId == null || sourceId.isEmpty
         ? sha256.convert(utf8.encode('$title\n$body')).toString()
         : sourceId;
