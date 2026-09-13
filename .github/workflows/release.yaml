@@ -99,8 +99,8 @@ jobs:
           flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 > /tmp/apk.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
-            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' -e 'What went wrong' /tmp/apk.log | head -n 5 | tr '\n' '|')"
-            grep -A10 'What went wrong' /tmp/apk.log | head -n 25
+            detail=$(grep -A10 'What went wrong' /tmp/apk.log | head -n 25 | tr '\n' '|')
+            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' /tmp/apk.log | head -n 5 | tr '\n' '|') detail: $detail"
             tail -n 40 /tmp/apk.log
             exit $code
           fi
