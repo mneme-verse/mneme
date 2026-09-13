@@ -114,6 +114,73 @@ void main() {
       expect(engine.text, throwsA(isA<TranscribeEngineException>()));
     });
 
+    test('failures carry status text and types render', () {
+      expect(
+        const TranscribeEngineException('x').toString(),
+        'TranscribeEngineException(x)',
+      );
+      expect(
+        const TranscribeEngineUnavailable('y').toString(),
+        'TranscribeEngineException(y)',
+      );
+      when(() => bindings.version()).thenReturn('test-1');
+      final engine = openEngine();
+      expect(engine.version, 'test-1');
+      verify(() => bindings.version()).called(1);
+      engine.dispose();
+    });
+
+    test('feed failure throws with status text', () {
+      when(() => bindings.streamFeed(any(), any())).thenReturn(8);
+      when(() => bindings.statusString(any())).thenReturn('backend');
+      final engine = openEngine()..begin();
+      expect(
+        () => engine.feed(Float32List(4)),
+        throwsA(
+          isA<TranscribeEngineException>().having(
+            (e) => e.message,
+            'message',
+            contains('backend'),
+          ),
+        ),
+      );
+      engine.dispose();
+    });
+
+    test('finalize failure throws with status text', () {
+      when(() => bindings.streamFinalize(any())).thenReturn(8);
+      when(() => bindings.statusString(any())).thenReturn('backend');
+      final engine = openEngine()..begin();
+      expect(
+        engine.finalize,
+        throwsA(
+          isA<TranscribeEngineException>().having(
+            (e) => e.message,
+            'message',
+            contains('backend'),
+          ),
+        ),
+      );
+      engine.dispose();
+    });
+
+    test('unreadable status falls back to the code', () {
+      when(() => bindings.streamBegin(any())).thenReturn(8);
+      when(() => bindings.statusString(any())).thenThrow(Exception('gone'));
+      final engine = openEngine();
+      expect(
+        engine.begin,
+        throwsA(
+          isA<TranscribeEngineException>().having(
+            (e) => e.message,
+            'message',
+            contains('status 8'),
+          ),
+        ),
+      );
+      engine.dispose();
+    });
+
     test('dispose is idempotent', () {
       final engine = openEngine()..dispose();
       expect(engine.dispose, returnsNormally);

@@ -437,4 +437,14 @@ void main() {
     );
     expect(File('${dir.path}/late.bin').existsSync(), isFalse);
   });
+
+  test('modelFile resolves the install path without I/O', () {
+    final file = repository.modelFile('nemotron-test.gguf');
+    expect(
+      file.path,
+      '${tempDir.path}${Platform.pathSeparator}models'
+      '${Platform.pathSeparator}nemotron-test.gguf',
+    );
+    expect(file.existsSync(), isFalse);
+  });
 }

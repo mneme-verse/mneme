@@ -24,11 +24,14 @@ class MockBindings extends Mock implements TranscribeBindings {}
 class FakeAudioInput implements AudioInput {
   final StreamController<Uint8List> controller = StreamController<Uint8List>();
 
+  /// Permission answer.
+  bool permission = true;
+
   /// Pushes one PCM16 chunk into the take.
   void pushChunk(Uint8List chunk) => controller.add(chunk);
 
   @override
-  Future<bool> ensurePermission() async => true;
+  Future<bool> ensurePermission() async => permission;
 
   @override
   Future<Stream<Uint8List>> startPcm16() async => controller.stream;
@@ -115,6 +118,63 @@ void main() {
       await pumpPage(tester, openDriver());
       expect(find.byIcon(Icons.mic), findsOneWidget);
       expect(find.text('Recite'), findsWidgets);
+    });
+
+    testWidgets('denied permission renders instead of crashing', (
+      tester,
+    ) async {
+      audio.permission = false;
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pumpAndSettle();
+      expect(find.text('Microphone permission denied'), findsOneWidget);
+    });
+
+    testWidgets('engine failure renders instead of crashing', (
+      tester,
+    ) async {
+      when(
+        () => bindings.openSession(any()),
+      ).thenReturn((8, ffi.nullptr));
+      when(() => bindings.statusString(any())).thenReturn('backend');
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('backend'), findsOneWidget);
+    });
+
+    testWidgets('partial transcript leaves pending words', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      when(
+        () => bindings.streamText(any()),
+      ).thenReturn('Once upon a midnight');
+      audio.pushChunk(pcm16(1600));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tally-pending')), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('a wrong word renders the wrong tally', (tester) async {
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      when(
+        () => bindings.streamText(any()),
+      ).thenReturn('Once upon a banana');
+      audio.pushChunk(pcm16(1600));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('tally-wrong')), findsOneWidget);
     });
 
     testWidgets('a take locates the poem and reports feedback', (

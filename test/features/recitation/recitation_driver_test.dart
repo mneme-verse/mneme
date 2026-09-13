@@ -113,6 +113,35 @@ void main() {
       await driver.dispose();
     });
 
+    test('denial renders as a typed exception', () {
+      expect(
+        const RecitationPermissionDenied().toString(),
+        'RecitationPermissionDenied()',
+      );
+    });
+
+    test('default callback drops transcripts silently', () async {
+      final quiet = RecitationDriver(
+        modelPath: 'model.gguf',
+        audio: audio,
+        openEngine: (path) => TranscribeEngine(path, open: () => bindings),
+      );
+      addTearDown(quiet.dispose);
+      await quiet.start();
+      audio.pushChunk(pcm16([1, 2, 3, 4]));
+      await Future<void>.delayed(Duration.zero);
+      await quiet.stop();
+    });
+
+    test('stream errors end the chunk flow without transcripts', () async {
+      final driver = openDriver();
+      await driver.start();
+      audio.controller.addError(Exception('mic lost'));
+      await Future<void>.delayed(Duration.zero);
+      expect(transcripts, isEmpty);
+      await driver.stop();
+    });
+
     test('stop while idle is a no-op', () async {
       final driver = openDriver();
       await driver.stop();

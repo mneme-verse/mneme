@@ -35,17 +35,19 @@ class RecitationPage extends StatefulWidget {
 }
 
 class _RecitationPageState extends State<RecitationPage> {
-  RecitationCubit? _cubit;
-  RecitationDriver? _driver;
+  late final RecitationCubit _cubit;
+  late final RecitationDriver _driver;
   String? _error;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _cubit ??= RecitationCubit(
+  void initState() {
+    super.initState();
+    // context.read is safe in initState (no subscription); owners are
+    // fixed for the page lifetime, so no didChangeDependencies tracking.
+    _cubit = RecitationCubit(
       poetryRepository: context.read<PoetryRepository>(),
     );
-    _driver ??=
+    _driver =
         widget.driver ??
         RecitationDriver(
           modelPath: context
@@ -53,15 +55,15 @@ class _RecitationPageState extends State<RecitationPage> {
               .modelFile(defaultSpeechModelId)
               .path,
         );
-    _driver?.onTranscript = (text) {
-      unawaited(_cubit?.onTranscript(text) ?? Future.value());
+    _driver.onTranscript = (text) {
+      unawaited(_cubit.onTranscript(text));
     };
   }
 
   @override
   void dispose() {
-    unawaited(_driver?.dispose() ?? Future.value());
-    unawaited(_cubit?.close());
+    unawaited(_driver.dispose());
+    unawaited(_cubit.close());
     super.dispose();
   }
 
@@ -69,15 +71,15 @@ class _RecitationPageState extends State<RecitationPage> {
   /// crashing.
   Future<void> _start() async {
     setState(() => _error = null);
-    _cubit?.start();
+    _cubit.start();
     try {
-      await _driver?.start();
+      await _driver.start();
     } on RecitationPermissionDenied {
-      _cubit?.stop();
+      _cubit.stop();
       setState(() => _error = 'Microphone permission denied');
       return;
     } on TranscribeEngineException catch (e) {
-      _cubit?.stop();
+      _cubit.stop();
       setState(() => _error = e.message);
       return;
     }
@@ -86,22 +88,18 @@ class _RecitationPageState extends State<RecitationPage> {
 
   /// Stops the take, keeping the last attempt visible.
   Future<void> _stop() async {
-    await _driver?.stop();
-    _cubit?.stop();
+    await _driver.stop();
+    _cubit.stop();
     if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final cubit = _cubit;
-    if (cubit == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
     return BlocProvider.value(
-      value: cubit,
+      value: _cubit,
       child: _RecitationView(
         error: _error,
-        isListening: _driver?.isListening ?? false,
+        isListening: _driver.isListening,
         onStart: _start,
         onStop: _stop,
       ),
@@ -252,6 +250,7 @@ class _Tally extends StatelessWidget {
     return Semantics(
       label: semantics,
       child: Chip(
+        key: ValueKey('tally-$semantics'),
         avatar: CircleAvatar(backgroundColor: color),
         label: Text('$count'),
       ),

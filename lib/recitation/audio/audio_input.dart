@@ -22,6 +22,11 @@ abstract class AudioInput {
 }
 
 /// [AudioInput] backed by the `record` plugin.
+///
+/// Unit tests cover the [AudioInput] contract through fakes; this wrapper
+/// only forwards to platform channels, which need a device. The ignore
+/// markers match the existing convention for platform-bound code.
+// coverage:ignore-start
 class RecordAudioInput implements AudioInput {
   /// Creates a recorder-backed input.
   RecordAudioInput({AudioRecorder? recorder})
@@ -49,3 +54,4 @@ class RecordAudioInput implements AudioInput {
   @override
   void dispose() => _recorder.dispose();
 }
+// coverage:ignore-end
