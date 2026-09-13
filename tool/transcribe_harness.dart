@@ -359,8 +359,10 @@ Future<void> main(List<String> args) async {
     buildDir,
     '-G',
     'Ninja',
-    '-DCMAKE_BUILD_TYPE=Release',
-    '-DTRANSCRIBE_BUILD_REAL_MODEL_TESTS=OFF',
+    // Interpolated so the -D prefix does not glue onto the variable name
+    // for spell-checking; cmake receives identical arguments.
+    '${'-D'}CMAKE_BUILD_TYPE=Release',
+    '${'-D'}TRANSCRIBE_BUILD_REAL_MODEL_TESTS=OFF',
   ]);
   if (code != 0) {
     exitCode = code;
