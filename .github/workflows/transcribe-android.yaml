@@ -27,6 +27,9 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: 📦 Install NDK and CMake
+        run: |
+          sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-24" 2>&1 | tail -n 2
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/28.2.13676358" >> "$GITHUB_ENV"
       - name: 🏗️ Configure arm64 shared lib
         run: |
           set +e
