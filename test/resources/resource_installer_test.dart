@@ -11,7 +11,7 @@ import 'package:mneme/resources/resource_repository.dart';
 
 void main() {
   late HttpServer server;
-  late StreamSubscription<HttpRequest> subscription;
+  StreamSubscription<HttpRequest>? subscription;
   late Directory tempDir;
   late ResourceRepository repository;
 
@@ -49,7 +49,8 @@ void main() {
 
   tearDown(() async {
     await repository.dispose();
-    await subscription.cancel();
+    await subscription?.cancel();
+    subscription = null;
     await server.close(force: true);
     await tempDir.delete(recursive: true);
   });
@@ -149,7 +150,7 @@ void main() {
       final url = serverUrl('once.bin');
 
       // Any further download attempt now fails at the socket level.
-      await subscription.cancel();
+      await subscription?.cancel();
       await server.close(force: true);
 
       final second = await repository.installCorpusPack(
@@ -362,5 +363,30 @@ void main() {
 
     expect(files[0].path, files[1].path);
     expect(requests, 1);
+  });
+
+  test('cancel from the final progress callback still wins', () async {
+    serve(bytes: payload);
+    final dir = Directory('${tempDir.path}/late')..createSync();
+    final installer = ResourceInstaller(
+      client: http.Client(),
+      destinationDir: dir,
+    );
+    final token = InstallCancelToken();
+    await expectLater(
+      installer.install(
+        'late.bin',
+        Uri.parse(serverUrl('late.bin')),
+        shaOf(payload),
+        cancelToken: token,
+        onProgress: (progress) {
+          if (progress.receivedBytes >= payload.length) {
+            token.cancel();
+          }
+        },
+      ),
+      throwsA(isA<InstallCanceledException>()),
+    );
+    expect(File('${dir.path}/late.bin').existsSync(), isFalse);
   });
 }

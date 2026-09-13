@@ -184,10 +184,11 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     if (language == null) return;
 
     // Cancel both possible in-flight resources for this onboarding run.
-    // Pack filenames are language-keyed by the manifest contract.
+    // Pack filenames are language-keyed by the manifest contract, and the
+    // model is the injected one, not necessarily the default.
     _resources
       ..cancel('$language.db.zst')
-      ..cancel(defaultSpeechModelId);
+      ..cancel(_speechModel.id);
   }
 
   /// Returns to language selection after a failure.

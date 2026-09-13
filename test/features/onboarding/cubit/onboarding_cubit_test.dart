@@ -28,8 +28,8 @@ void main() {
     modelBytes = Uint8List.fromList(List<int>.generate(2048, (i) => i % 13));
     corpusSha256 = sha256.convert(corpusBytes).toString();
     fakeSpeechModel = LockedResource(
-      id: defaultSpeechModelId,
-      url: 'https://example.test/models/fake-model.gguf',
+      id: 'tiny-model.gguf',
+      url: 'https://example.test/models/tiny-model.gguf',
       sha256: sha256.convert(modelBytes).toString(),
       sizeBytes: modelBytes.length,
     );
@@ -63,7 +63,7 @@ void main() {
       }
       if (request.url.toString() ==
           'https://example.test/models/'
-              'fake-model.gguf') {
+              'tiny-model.gguf') {
         return http.Response.bytes(modelBytes, 200);
       }
       return http.Response('not found', 404);

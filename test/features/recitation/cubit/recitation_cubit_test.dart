@@ -301,5 +301,24 @@ void main() {
             .having((s) => s.extraWords, 'extra words', greaterThan(0)),
       ],
     );
+
+    test('closing during retrieval discards the result silently', () async {
+      when(
+        () => poetryRepository.findCandidatePassages(any()),
+      ).thenAnswer((_) async {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        return [candidate()];
+      });
+      final cubit = RecitationCubit(poetryRepository: poetryRepository);
+      addTearDown(() async {
+        if (!cubit.isClosed) await cubit.close();
+      });
+      cubit.start();
+      final pending = cubit.onTranscript('once upon a midnight');
+      await cubit.close();
+      // Must not throw or emit on the closed cubit.
+      await pending;
+      expect(cubit.state.located, isNull);
+    });
   });
 }

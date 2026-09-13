@@ -277,6 +277,14 @@ class RecitationCubit extends Cubit<RecitationState> {
     if (poemId != best.poemId) return poemId < best.poemId;
     return passageId < best.passageId;
   }
+
+  @override
+  Future<void> close() {
+    // Invalidate retrievals that outlive the widget: their attempt can no
+    // longer match, so they return before emitting on a closed cubit.
+    _attempt++;
+    return super.close();
+  }
 }
 
 class _Located {

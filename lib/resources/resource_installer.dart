@@ -126,6 +126,12 @@ class ResourceInstaller {
       if (expectedSize != null && received != expectedSize) {
         throw HashMismatchException(id, actualSha256);
       }
+      // A cancel that lands after the last chunk (from a final progress
+      // callback, or while flushing and hashing) must still win: the
+      // verified file is never installed after cancellation.
+      if (cancelToken?.isCanceled ?? false) {
+        throw InstallCanceledException(id);
+      }
 
       // Atomic cutover: rename(2) replaces the destination atomically on
       // the supported POSIX targets (Android, Linux), so a crash can

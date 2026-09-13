@@ -130,31 +130,99 @@ class DataPublisher {
       print('✅ Release created.');
     }
 
-    // 5. Upload Assets
-    print('📤 Uploading assets...');
-    final assetPaths = [
-      ...zstFiles.map((f) => f.path),
-      manifestFile.path,
-    ];
+    // 5. Merge with the published manifest when the release already has
+    // packs: single-language builds must not clobber other languages.
+    var manifestPath = manifestFile.path;
+    Directory? scratch;
+    try {
+      if (checkResult.exitCode == 0) {
+        scratch = await Directory.systemTemp.createTemp('mneme-publish-');
+        manifestPath = await _mergedManifestPath(
+          tagName,
+          manifest,
+          scratch,
+        );
+      }
 
-    final uploadResult = await _processRunner('gh', [
+      // 6. Upload Assets
+      print('📤 Uploading assets...');
+      final assetPaths = [
+        ...zstFiles.map((f) => f.path),
+        manifestPath,
+      ];
+
+      final uploadResult = await _processRunner('gh', [
+        'release',
+        'upload',
+        tagName,
+        ...assetPaths,
+        '--clobber',
+      ]);
+
+      if (uploadResult.exitCode != 0) {
+        throw Exception('Error uploading assets: ${uploadResult.stderr}');
+      }
+
+      print(
+        '🎉 Release complete: https://github.com/mneme-verse/mneme/releases/tag/'
+        '$tagName',
+      );
+    } finally {
+      await scratch?.delete(recursive: true);
+    }
+  }
+
+  /// Downloads the published manifest for [tagName] (when any), overlays
+  /// the local entries, and writes the union to [scratch]. Falls back to
+  /// the local manifest when nothing is published yet.
+  Future<String> _mergedManifestPath(
+    String tagName,
+    Map<String, dynamic> local,
+    Directory scratch,
+  ) async {
+    final download = await _processRunner('gh', [
       'release',
-      'upload',
+      'download',
       tagName,
-      ...assetPaths,
+      '--pattern',
+      'manifest.json',
+      '--dir',
+      scratch.path,
       '--clobber',
     ]);
-
-    if (uploadResult.exitCode != 0) {
-      throw Exception('Error uploading assets: ${uploadResult.stderr}');
+    var merged = mergeManifests(const {}, local);
+    if (download.exitCode == 0) {
+      try {
+        final published =
+            json.decode(
+              await File(
+                path.join(scratch.path, 'manifest.json'),
+              ).readAsString(),
+            )
+            as Map<String, dynamic>;
+        merged = mergeManifests(published, local);
+        print(
+          'ℹ️  Merged ${local.length} local entries over '
+          '${published.length} published.',
+        );
+      } on Exception catch (_) {
+        print('ℹ️  Published manifest unreadable; uploading the local one.');
+      }
+    } else {
+      print('ℹ️  No published manifest yet; uploading the local one.');
     }
-
-    print(
-      '🎉 Release complete: https://github.com/mneme-verse/mneme/releases/tag/'
-      '$tagName',
-    );
+    final out = path.join(scratch.path, 'manifest.json');
+    await File(out).writeAsString('${json.encode(merged)}\n');
+    return out;
   }
 }
+
+/// Unions two corpus manifests: every local entry wins over the published
+/// one, other languages and metadata survive single-language publishes.
+Map<String, dynamic> mergeManifests(
+  Map<String, dynamic> published,
+  Map<String, dynamic> local,
+) => {...published, ...local};
 
 /// Simple abstraction for FileSystem to improve testability
 abstract class FileSystem {
