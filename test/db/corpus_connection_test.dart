@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/db/connection/flutter_connection.dart';
 import 'package:mneme/db/database.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   late Directory docsDir;
@@ -75,5 +76,32 @@ void main() {
     final titles = await readTitles('ru');
     expect(titles, contains('Pack poem'));
     expect(titles, isNot(contains('Stale poem')));
+  });
+
+  test('stale schema files are replaced by the installed pack', () async {
+    final stale = File(p.join(docsDir.path, 'ru.db'));
+    sqlite3.open(stale.path)
+      ..execute('PRAGMA user_version = 1;')
+      ..dispose();
+
+    final source = File(p.join(supportDir.path, 'source.db'));
+    await insertPoem(source, 'Pack poem');
+    final packDir = Directory(p.join(supportDir.path, 'corpora'))
+      ..createSync();
+    await File(
+      p.join(packDir.path, 'ru.db.zst'),
+    ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
+
+    expect(await readTitles('ru'), ['Pack poem']);
+  });
+
+  test('current schema files are kept as is', () async {
+    final file = File(p.join(docsDir.path, 'en.db'));
+    await insertPoem(file, 'Kept poem');
+
+    await invalidateStaleCorpusSchema(file);
+
+    expect(file.existsSync(), isTrue);
+    expect(await readTitles('en'), ['Kept poem']);
   });
 }

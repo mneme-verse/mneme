@@ -4,38 +4,70 @@ import 'package:mneme/db/tables.dart';
 
 part 'database.g.dart';
 
+/// Corpus schema version. Corpus databases are derived artifacts (built by
+/// `tool/builder.dart`, installed by `ResourceRepository`); the connection
+/// layer deletes files below this version before drift opens them, so an
+/// upgrade normally never meets a stale file. The destructive `onUpgrade`
+/// below is the backstop for opens that bypass that check.
+const corpusSchemaVersion = 2;
+
 @DriftDatabase(tables: [Poems, Authors, PoemAuthors, Metadata, PoemPassages])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => corpusSchemaVersion;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (m) async {
         await m.createAll();
-
-        // Manually create FTS5 table
-        await customStatement(
-          // ignore: lines_longer_than_80_chars // SQL statement
-          "CREATE VIRTUAL TABLE poems_fts USING fts5(title, author_names, body, alt_titles, content='poems', content_rowid='id')",
-        );
-
-        await customStatement(
-          'CREATE VIRTUAL TABLE passages_fts USING fts5(search_text, '
-          "content='poem_passages', content_rowid='id')",
-        );
-
-        await customStatement(
-          'CREATE INDEX poem_passages_poem_id_idx ON poem_passages (poem_id)',
-        );
-
-        // Create triggers to keep FTS in sync
-        await createFtsTriggers();
+        await createSearchObjects();
+      },
+      onUpgrade: (m, from, to) async {
+        if (from < 2) {
+          // v1 lacks poem_key, language, content_hash, poem_passages and
+          // the renamed FTS columns. Rebuilding is safe because every row
+          // can be reinstalled from a signed corpus pack; migrating user
+          // data is unnecessary (reviews live in the study database).
+          for (final table in [
+            'poems_fts',
+            'passages_fts',
+            'poem_passages',
+            'poem_authors',
+            'poems',
+            'authors',
+            'metadata',
+          ]) {
+            await customStatement('DROP TABLE IF EXISTS $table');
+          }
+          await m.createAll();
+          await createSearchObjects();
+        }
       },
     );
+  }
+
+  /// Creates the FTS5 tables, the passage index and the sync triggers.
+  Future<void> createSearchObjects() async {
+    // Manually create FTS5 table
+    await customStatement(
+      // ignore: lines_longer_than_80_chars // SQL statement
+      "CREATE VIRTUAL TABLE poems_fts USING fts5(title, author_names, body, alt_titles, content='poems', content_rowid='id')",
+    );
+
+    await customStatement(
+      'CREATE VIRTUAL TABLE passages_fts USING fts5(search_text, '
+      "content='poem_passages', content_rowid='id')",
+    );
+
+    await customStatement(
+      'CREATE INDEX poem_passages_poem_id_idx ON poem_passages (poem_id)',
+    );
+
+    // Create triggers to keep FTS in sync
+    await createFtsTriggers();
   }
 
   /// Create FTS triggers to keep the FTS index in sync with the poems table

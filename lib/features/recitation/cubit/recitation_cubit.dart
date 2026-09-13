@@ -97,22 +97,33 @@ class RecitationCubit extends Cubit<RecitationState> {
 
   final PoetryRepository _poetryRepository;
 
+  /// Monotonic id of the latest listening attempt. Retrieval is async, so
+  /// a newer transcript (or [stop]/[start]) must invalidate results that
+  /// are still in flight; stale results are discarded, never emitted.
+  int _attempt = 0;
+
   /// Normalized poem bodies by poem id, kept for the session.
   final _normalizedBodies = <int, NormalizedText>{};
 
   /// Starts accepting transcripts, clearing any previous attempt.
   void start() {
+    _attempt++;
     emit(const RecitationState(phase: RecitationPhase.listening));
   }
 
   /// Stops accepting transcripts, keeping the last attempt visible.
+  /// In-flight retrievals are invalidated along with the phase change.
   void stop() {
+    _attempt++;
     emit(state.copyWith(phase: RecitationPhase.idle));
   }
 
   /// Scores one recognizer transcript, interim or final.
   Future<void> onTranscript(String text) async {
     if (state.phase != RecitationPhase.listening) return;
+    // Newer transcripts supersede older ones: only the latest attempt
+    // may emit.
+    final attempt = ++_attempt;
 
     final hypothesisKeys = normalizeRecitationText(text).tokens
         .map((token) => token.key)
@@ -134,6 +145,10 @@ class RecitationCubit extends Cubit<RecitationState> {
       final candidates = await _poetryRepository.findCandidatePassages(
         hypothesisKeys,
       );
+      if (attempt != _attempt ||
+          state.phase != RecitationPhase.listening) {
+        return;
+      }
       final located = _locateBest(candidates, hypothesisKeys);
       if (located == null) {
         emit(
@@ -157,10 +172,23 @@ class RecitationCubit extends Cubit<RecitationState> {
         ),
       );
     } on Exception catch (error) {
+      if (attempt != _attempt ||
+          state.phase != RecitationPhase.listening) {
+        return;
+      }
       emit(state.copyWith(hypothesis: text, error: error));
     }
   }
 
+  /// Selects the best alignment of [hypothesisKeys] across [candidates].
+  ///
+  /// Passage windows deliberately overlap, and recitation may begin at any
+  /// token, so every offset inside each candidate window is tried: the
+  /// reported passage starts where the match actually begins, and words
+  /// before that offset are never marked wrong. Selection prefers more
+  /// matched words, then fewer wrong words, then higher precision, then
+  /// the lowest poem and passage ids, so equal matches resolve
+  /// deterministically no matter which order FTS returns.
   _Located? _locateBest(
     List<RecitationCandidate> candidates,
     List<String> hypothesisKeys,
@@ -173,46 +201,76 @@ class RecitationCubit extends Cubit<RecitationState> {
       );
       final start = candidate.startToken.clamp(0, normalized.tokens.length);
       final end = candidate.endToken.clamp(start, normalized.tokens.length);
-      if (start >= end) continue;
-      final expectedKeys = [
-        for (var i = start; i < end; i++) normalized.tokens[i].key,
-      ];
-      final alignment = alignRecitation(
-        expectedKeys: expectedKeys,
-        hypothesisKeys: hypothesisKeys,
-      );
-      final score = hypothesisKeys.isEmpty
-          ? 0.0
-          : alignment.matchedWords / hypothesisKeys.length;
-      if (!isLocated(matchedWords: alignment.matchedWords, score: score)) {
-        continue;
-      }
-      if (best == null ||
-          score > best.score ||
-          (score == best.score &&
-              alignment.matchedWords > best.alignment.matchedWords)) {
+      for (var offset = start; offset < end; offset++) {
+        final expectedKeys = [
+          for (var i = offset; i < end; i++) normalized.tokens[i].key,
+        ];
+        final alignment = alignRecitation(
+          expectedKeys: expectedKeys,
+          hypothesisKeys: hypothesisKeys,
+        );
+        final score = alignment.matchedWords / hypothesisKeys.length;
+        if (!isLocated(matchedWords: alignment.matchedWords, score: score)) {
+          continue;
+        }
+        final wrongWords = alignment.words
+            .where((word) => word.verdict == WordVerdict.wrong)
+            .length;
+        if (best != null && !_beats(
+          matchedWords: alignment.matchedWords,
+          wrongWords: wrongWords,
+          score: score,
+          poemId: candidate.poemId,
+          passageId: candidate.passageId,
+          best: best,
+        )) {
+          continue;
+        }
         best = _Located(
           passage: LocatedPassage(
             poemId: candidate.poemId,
             poemTitle: candidate.poemTitle,
-            startToken: start,
+            startToken: offset,
             endToken: end,
           ),
           feedback: [
             for (final word in alignment.words)
               (
-                tokenIndex: word.tokenIndex + start,
+                tokenIndex: word.tokenIndex + offset,
                 verdict: word.verdict,
                 heard: word.heard,
               ),
           ],
           extraWords: alignment.extraWords,
           score: score,
-          alignment: alignment,
+          matchedWords: alignment.matchedWords,
+          wrongWords: wrongWords,
+          poemId: candidate.poemId,
+          passageId: candidate.passageId,
         );
       }
     }
     return best;
+  }
+
+  /// Whether a new alignment outranks [best]: more matched words, then
+  /// fewer wrong words (a later offset beats leading skips), then higher
+  /// precision, then deterministic id order.
+  bool _beats({
+    required int matchedWords,
+    required int wrongWords,
+    required double score,
+    required int poemId,
+    required int passageId,
+    required _Located best,
+  }) {
+    if (matchedWords != best.matchedWords) {
+      return matchedWords > best.matchedWords;
+    }
+    if (wrongWords != best.wrongWords) return wrongWords < best.wrongWords;
+    if (score != best.score) return score > best.score;
+    if (poemId != best.poemId) return poemId < best.poemId;
+    return passageId < best.passageId;
   }
 }
 
@@ -222,12 +280,18 @@ class _Located {
     required this.feedback,
     required this.extraWords,
     required this.score,
-    required this.alignment,
+    required this.matchedWords,
+    required this.wrongWords,
+    required this.poemId,
+    required this.passageId,
   });
 
   final LocatedPassage passage;
   final List<WordFeedback> feedback;
   final int extraWords;
   final double score;
-  final AlignmentResult alignment;
+  final int matchedWords;
+  final int wrongWords;
+  final int poemId;
+  final int passageId;
 }

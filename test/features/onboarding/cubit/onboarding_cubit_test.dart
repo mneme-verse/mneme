@@ -103,6 +103,43 @@ void main() {
         isA<OnboardingState>()
             .having((s) => s.resource, 'resource', OnboardingResource.corpus)
             .having((s) => s.totalBytes, 'totalBytes', corpusBytes.length),
+        // Mirrored repository progress: download start, full bytes,
+        // then the installed marker for the corpus pack.
+        isA<OnboardingState>()
+            .having((s) => s.resource, 'resource', OnboardingResource.corpus)
+            .having((s) => s.receivedBytes, 'receivedBytes', 0),
+        isA<OnboardingState>()
+            .having((s) => s.resource, 'resource', OnboardingResource.corpus)
+            .having(
+              (s) => s.receivedBytes,
+              'receivedBytes',
+              corpusBytes.length,
+            ),
+        isA<OnboardingState>().having(
+          (s) => s.resource,
+          'resource',
+          OnboardingResource.corpus,
+        ),
+        // Same mirrored progress for the speech model.
+        isA<OnboardingState>().having(
+          (s) => s.resource,
+          'resource',
+          OnboardingResource.speechModel,
+        ),
+        isA<OnboardingState>()
+            .having(
+              (s) => s.resource,
+              'resource',
+              OnboardingResource.speechModel,
+            )
+            .having((s) => s.receivedBytes, 'receivedBytes', 0),
+        isA<OnboardingState>()
+            .having(
+              (s) => s.resource,
+              'resource',
+              OnboardingResource.speechModel,
+            )
+            .having((s) => s.receivedBytes, 'receivedBytes', modelBytes.length),
         isA<OnboardingState>().having(
           (s) => s.resource,
           'resource',

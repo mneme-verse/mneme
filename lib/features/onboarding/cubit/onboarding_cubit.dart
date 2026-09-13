@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc/bloc.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:mneme/resources/resource_installer.dart';
@@ -90,11 +92,11 @@ class OnboardingCubit extends Cubit<OnboardingState> {
        _speechModel = speechModel ?? defaultSpeechModel(),
        _prefs = prefs,
        super(const OnboardingState.languageSelection());
-
   final ResourceRepository _resources;
   final CorpusManifestClient _manifestClient;
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
+  StreamSubscription<ResourceState>? _progressSubscription;
 
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
@@ -102,9 +104,23 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   /// Starts installing resources for [language].
   ///
   /// Failures surface as [OnboardingPhase.failed] with [OnboardingState.error];
-  /// the error is also rethrown for awaiting callers. A completed install
-  /// emits [OnboardingPhase.completed] and persists the language.
   Future<void> selectLanguage(String language) async {
+    await _progressSubscription?.cancel();
+    _progressSubscription = _resources.states.listen((update) {
+      // Mirror byte progress into the installing state. Events from a
+      // previous run are impossible (the old subscription is canceled
+      // above), and events after completion are ignored by the phase.
+      if (state.phase != OnboardingPhase.installing) return;
+      emit(
+        state.copyWith(
+          resource: update.id == _speechModel.id
+              ? OnboardingResource.speechModel
+              : OnboardingResource.corpus,
+          receivedBytes: update.receivedBytes,
+          totalBytes: update.totalBytes,
+        ),
+      );
+    });
     emit(
       const OnboardingState.languageSelection().copyWith(
         phase: OnboardingPhase.installing,
@@ -149,6 +165,9 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     } catch (error) {
       emit(state.copyWith(phase: OnboardingPhase.failed, error: error));
       rethrow;
+    } finally {
+      await _progressSubscription?.cancel();
+      _progressSubscription = null;
     }
   }
 
@@ -166,5 +185,11 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   /// Returns to language selection after a failure.
   void resetToLanguageSelection() {
     emit(const OnboardingState.languageSelection());
+  }
+
+  @override
+  Future<void> close() async {
+    await _progressSubscription?.cancel();
+    return super.close();
   }
 }

@@ -111,6 +111,7 @@ class PoetryRepository {
       JOIN poem_passages p ON p.id = passages_fts.rowid
       JOIN poems ON poems.id = p.poem_id
       WHERE passages_fts MATCH ?
+      ORDER BY p.id
       LIMIT ?
     ''';
     final rows = await _db

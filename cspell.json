@@ -25,9 +25,13 @@
     "**/*.g.dart",
     "**/*.gen.dart"
   ],
+  "ignoreRegExpList": [
+    "/[\\u0400-\\u04FF]+/g"
+  ],
   "useGitignore": true,
   "words": [
     "Allosaurus",
+    "Anki",
     "backpointers",
     "Bermúdez",
     "Bobenhausen",
@@ -36,8 +40,10 @@
     "cmake",
     "ctest",
     "CTC",
+    "cutover",
     "Čeština",
     "Collab",
+    "datetimes",
     "Delente",
     "Deutsch",
     "ETag",
@@ -64,8 +70,10 @@
     "LibriVox",
     "Magyar",
     "Martynenko",
+    "misrecognized",
     "Mittmann",
     "mneme",
+    "mnemeverse",
     "MMS",
     "mocktail",
     "NDK",
@@ -89,6 +97,7 @@
     "rominf",
     "Русский",
     "Sabel",
+    "sandboxed",
     "sdkmanager",
     "Šeļa",
     "Silentium",

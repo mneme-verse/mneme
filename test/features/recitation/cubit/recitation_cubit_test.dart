@@ -9,13 +9,18 @@ class MockPoetryRepository extends Mock implements PoetryRepository {}
 
 const _body = 'Once upon a midnight dreary, while I pondered weak and weary';
 
-RecitationCandidate candidate({String body = _body}) => RecitationCandidate(
-  passageId: 1,
+RecitationCandidate candidate({
+  String body = _body,
+  int passageId = 1,
+  int startToken = 0,
+  int endToken = 12,
+}) => RecitationCandidate(
+  passageId: passageId,
   poemId: 1,
   poemTitle: 'The Raven',
   poemBody: body,
-  startToken: 0,
-  endToken: 12,
+  startToken: startToken,
+  endToken: endToken,
 );
 
 void main() {
@@ -191,5 +196,85 @@ void main() {
             ),
       ],
     );
+    blocTest<RecitationCubit, RecitationState>(
+      'locates mid-window recitation at its offset',
+      build: () {
+        when(
+          () => poetryRepository.findCandidatePassages(any()),
+        ).thenAnswer((_) async => [candidate()]);
+        return RecitationCubit(poetryRepository: poetryRepository);
+      },
+      act: (cubit) async {
+        cubit.start();
+        await cubit.onTranscript('midnight dreary while I');
+      },
+      expect: () => [
+        isA<RecitationState>(),
+        isA<RecitationState>()
+            .having((s) => s.located?.startToken, 'start', 3)
+            .having((s) => s.score, 'score', 1.0)
+            .having(
+              (s) => s.feedback.map((w) => w.verdict),
+              'verdicts',
+              everyElement(isNot(WordVerdict.wrong)),
+            ),
+      ],
+    );
+
+    blocTest<RecitationCubit, RecitationState>(
+      'discards transcripts that finish after stop',
+      build: () {
+        when(
+          () => poetryRepository.findCandidatePassages(any()),
+        ).thenAnswer((_) async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return [candidate()];
+        });
+        return RecitationCubit(poetryRepository: poetryRepository);
+      },
+      act: (cubit) async {
+        cubit.start();
+        final pending = cubit.onTranscript('once upon a midnight');
+        cubit.stop();
+        await pending;
+      },
+      expect: () => [
+        isA<RecitationState>().having(
+          (s) => s.located,
+          'listening unlocated',
+          isNull,
+        ),
+        isA<RecitationState>()
+            .having((s) => s.phase, 'phase', RecitationPhase.idle)
+            .having((s) => s.located, 'stays unlocated', isNull),
+      ],
+    );
+
+    for (final order in ['wide-first', 'narrow-first']) {
+      blocTest<RecitationCubit, RecitationState>(
+        'resolves overlapping windows identically ($order)',
+        build: () {
+          final wide = candidate(passageId: 9);
+          final narrow = candidate(passageId: 2, startToken: 3, endToken: 8);
+          when(
+            () => poetryRepository.findCandidatePassages(any()),
+          ).thenAnswer(
+            (_) async =>
+                order == 'wide-first' ? [wide, narrow] : [narrow, wide],
+          );
+          return RecitationCubit(poetryRepository: poetryRepository);
+        },
+        act: (cubit) async {
+          cubit.start();
+          await cubit.onTranscript('midnight dreary while I');
+        },
+        expect: () => [
+          isA<RecitationState>(),
+          isA<RecitationState>()
+              .having((s) => s.located?.startToken, 'start', 3)
+              .having((s) => s.located?.endToken, 'end', 8),
+        ],
+      );
+    }
   });
 }

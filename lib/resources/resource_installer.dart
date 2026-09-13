@@ -127,11 +127,27 @@ class ResourceInstaller {
         throw HashMismatchException(id, actualSha256);
       }
 
-      // Atomic cutover: replace any stale file only after verification.
-      if (destination.existsSync()) {
-        destination.deleteSync();
+      // Atomic cutover: stage the previous file aside so a crash or a
+      // failed rename never loses the last known-good resource.
+      final backup = File('${destination.path}.bak');
+      if (backup.existsSync()) {
+        backup.deleteSync();
       }
-      await partial.rename(destination.path);
+      final hadDestination = destination.existsSync();
+      if (hadDestination) {
+        destination.renameSync(backup.path);
+      }
+      try {
+        await partial.rename(destination.path);
+      } catch (_) {
+        if (hadDestination && !destination.existsSync()) {
+          backup.renameSync(destination.path);
+        }
+        rethrow;
+      }
+      if (backup.existsSync()) {
+        backup.deleteSync();
+      }
       return destination;
     } catch (_) {
       await sink.close();
@@ -142,15 +158,20 @@ class ResourceInstaller {
     }
   }
 
+  /// Destination file for [id] without touching the filesystem.
+  File pathFor(String id) => _destinationFor(id);
+
   /// Removes an installed resource. Missing files are not an error.
   Future<void> uninstall(String id) async {
     final destination = _destinationFor(id);
     if (destination.existsSync()) {
       destination.deleteSync();
     }
-    final partial = File('${destination.path}.part');
-    if (partial.existsSync()) {
-      partial.deleteSync();
+    for (final suffix in ['.part', '.bak']) {
+      final leftover = File('${destination.path}$suffix');
+      if (leftover.existsSync()) {
+        leftover.deleteSync();
+      }
     }
   }
 
@@ -159,19 +180,35 @@ class ResourceInstaller {
     return _fileMatches(_destinationFor(id), expectedSha256);
   }
 
-  /// Destination file for [id] without touching the filesystem.
-  File pathFor(String id) => _destinationFor(id);
-
   File _destinationFor(String id) {
+    if (!_isSafeFileName(id)) {
+      throw ArgumentError.value(id, 'id', 'must be a plain file name');
+    }
     return File(
       '${destinationDir.path}${Platform.pathSeparator}$id',
     );
   }
 
+  /// File names must be single path segments so a manifest-controlled id
+  /// can never escape [destinationDir]. The allowlist rejects separators,
+  /// drive prefixes and dot segments in one check.
+  bool _isSafeFileName(String id) {
+    if (id.isEmpty || id == '.' || id == '..') return false;
+    return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(id);
+  }
+
   Future<bool> _fileMatches(File file, String expectedSha256) async {
     if (!file.existsSync()) return false;
-    final bytes = await file.readAsBytes();
-    return sha256.convert(bytes).toString() == expectedSha256;
+    // Stream the hash: installed models are hundreds of megabytes and
+    // must never be buffered fully in memory for a validity check.
+    final collector = _DigestCollector();
+    final hasher = sha256.startChunkedConversion(collector);
+    try {
+      await file.openRead().forEach(hasher.add);
+    } finally {
+      hasher.close();
+    }
+    return collector.digest.toString() == expectedSha256.toLowerCase();
   }
 }
 

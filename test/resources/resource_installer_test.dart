@@ -186,4 +186,55 @@ void main() {
       reason: 'final download update must cover all bytes',
     );
   });
+
+  test('manifest-controlled ids cannot escape the destination', () async {
+    serve(bytes: payload);
+    for (final id in ['../evil.bin', r'..\evil.bin', '', '.', '..']) {
+      await expectLater(
+        repository.installCorpusPack(id, serverUrl('x'), shaOf(payload)),
+        throwsArgumentError,
+        reason: 'id "$id" must be rejected before any download',
+      );
+    }
+    expect(
+      File('${tempDir.path}/evil.bin').existsSync(),
+      isFalse,
+      reason: 'rejected ids must not create files outside the corpus dir',
+    );
+  });
+
+  test('reinstall replaces the file and removes the backup', () async {
+    serve(bytes: payload);
+    final first = await repository.installCorpusPack(
+      'fixture.bin',
+      serverUrl('fixture.bin'),
+      shaOf(payload),
+    );
+    final replacement = Uint8List.fromList(
+      List<int>.generate(1024, (i) => 255 - (i % 251)),
+    );
+    // The shared server is single-subscription, so the replacement bytes
+    // come from a second local server.
+    final replacementServer = await HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    try {
+      replacementServer.listen((request) async {
+        request.response.add(replacement);
+        await request.response.close();
+      });
+      final second = await repository.installCorpusPack(
+        'fixture.bin',
+        'http://127.0.0.1:${replacementServer.port}/fixture.bin',
+        shaOf(replacement),
+      );
+      expect(second.path, first.path);
+      expect(second.readAsBytesSync(), replacement);
+      expect(File('${second.path}.bak').existsSync(), isFalse);
+      expect(File('${second.path}.part').existsSync(), isFalse);
+    } finally {
+      await replacementServer.close(force: true);
+    }
+  });
 }

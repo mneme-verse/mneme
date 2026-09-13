@@ -13,6 +13,7 @@ import 'package:es_compression/zstd.dart';
 import 'package:http/http.dart' as http;
 import 'package:mneme/db/database.dart';
 import 'package:mneme/recitation/normalized_text.dart';
+import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:path/path.dart' as path;
 
 const _availableCorpora = ['cs', 'de', 'en', 'hu', 'no', 'pt', 'ru', 'sl'];
@@ -679,10 +680,10 @@ class PoeTreeBuilder {
       'url': 'https://creativecommons.org/licenses/by-sa/4.0/',
     };
 
-    // Using a fixed version for now as requested
-    const poetreeVersion = '1.0';
-    const internalVersion = 2;
-    const versionObj = '$poetreeVersion+$internalVersion';
+    // Single source of truth with the client default release tag; bump
+    // corpusDataVersion in lib/resources/corpus_manifest.dart to cut a
+    // new corpus release.
+    const versionObj = corpusDataVersion;
 
     for (final file in zstFiles) {
       final filename = path.basename(file.path);

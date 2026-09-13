@@ -6,8 +6,10 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:es_compression/zstd.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:mneme/db/database.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart';
 
 /// Opens the corpus database for [name] (`ru`, `en`, ...).
 ///
@@ -27,6 +29,10 @@ QueryExecutor openCorpusConnection({
     final dbFolder = documentsDir ?? await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, '$name.db'));
     final pack = File(p.join(supportDir.path, 'corpora', '$name.db.zst'));
+
+    // A v1 file can neither be queried nor migrated in place: drop it so
+    // the pack/asset provisioning below reinstalls schema v2.
+    await invalidateStaleCorpusSchema(file);
 
     if (pack.existsSync()) {
       final compressed = await Isolate.run(() {
@@ -56,4 +62,26 @@ QueryExecutor openCorpusConnection({
       ),
     );
   });
+}
+
+/// Deletes [file] when its `user_version` is below [corpusSchemaVersion].
+///
+/// Exposed for tests; production calls it from [openCorpusConnection]
+/// before drift opens the file.
+Future<void> invalidateStaleCorpusSchema(File file) async {
+  if (!file.existsSync()) return;
+  final probe = sqlite3.open(file.path);
+  final int version;
+  try {
+    version =
+        probe.select('PRAGMA user_version').single['user_version'] as int;
+  } finally {
+    probe.dispose();
+  }
+  if (version != corpusSchemaVersion) {
+    await file.delete();
+    debugPrint(
+      'Removed stale corpus database below schema v$corpusSchemaVersion.',
+    );
+  }
 }

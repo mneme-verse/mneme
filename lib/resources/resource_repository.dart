@@ -84,7 +84,11 @@ class ResourceRepository {
   final ResourceInstaller _models;
   final ResourceInstaller _corpora;
 
-  final _statesController = StreamController<ResourceState>.broadcast();
+  // Synchronous delivery: progress states reach listeners in emission
+  // order, so install markers never overtake the install they describe.
+  final _statesController = StreamController<ResourceState>.broadcast(
+    sync: true,
+  );
   final _states = <String, ResourceState>{};
   final _cancelTokens = <String, InstallCancelToken>{};
 

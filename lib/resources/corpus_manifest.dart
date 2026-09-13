@@ -2,13 +2,25 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Base URL of the published schema-two corpus release.
-Uri corpusReleaseBase(String tag) =>
-    Uri.parse('https://github.com/mneme-verse/mneme/releases/download/$tag');
+/// Base URL of the published schema-two corpus release. The trailing slash
+/// keeps [Uri.resolve] inside the tag directory instead of replacing it.
+Uri corpusReleaseBase(String tag) => Uri.parse(
+  'https://github.com/mneme-verse/mneme/releases/download/$tag/',
+);
 
-/// Current corpus release tag. App releases and corpus data tags stay
-/// separate, so bumping this never touches app versioning.
-const corpusReleaseTag = 'data-v1';
+/// Corpus data version written by `tool/builder.dart` (`generateManifest`)
+/// and published by `tool/publish_data.dart` as release `data-v<version>`.
+/// Both tools read this constant, so the client default below can never
+/// drift from the publisher tag.
+const corpusDataVersion = '1.0+2';
+
+/// Release tag for a corpus data version, e.g. `data-v1.0+2`. App releases
+/// and corpus data tags stay separate, so bumping this never touches app
+/// versioning.
+String corpusReleaseTagFor(String version) => 'data-v$version';
+
+/// Current corpus release tag, derived from [corpusDataVersion].
+const corpusReleaseTag = 'data-v$corpusDataVersion';
 
 /// One language pack from the published `manifest.json`.
 class CorpusPackInfo {
@@ -101,9 +113,12 @@ class CorpusManifestClient {
     }
 
     final file = entry['file'];
-    if (file is! String || !file.endsWith('.db.zst')) {
+    if (file is! String ||
+        !file.endsWith('.db.zst') ||
+        file.contains('/') ||
+        file.codeUnits.contains(0x5C)) {
       throw CorpusManifestException(
-        'entry "$language" lacks a .db.zst file name',
+        'entry "$language" lacks a safe single-segment .db.zst file name',
       );
     }
 

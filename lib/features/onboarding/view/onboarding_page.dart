@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mneme/features/onboarding/cubit/onboarding_cubit.dart';
@@ -115,7 +113,7 @@ class _LanguageSelector extends StatelessWidget {
             child: SizedBox(
               width: 200,
               child: FilledButton(
-                onPressed: () => onSelect(language),
+                onPressed: () => onSelect(language).ignore(),
                 child: Text(_names[language] ?? language),
               ),
             ),
@@ -196,9 +194,10 @@ class _InstallFailure extends StatelessWidget {
             onPressed: () {
               final language = state.language;
               if (language != null) {
-                // Errors are rethrown; unawaited on purpose because the
-                // cubit state is the source of truth for the UI.
-                unawaited(cubit.selectLanguage(language));
+                // The cubit also throws for awaiting callers, but the UI
+                // reads the failed state instead; the error is discarded
+                // here so it never becomes an unhandled async exception.
+                cubit.selectLanguage(language).ignore();
               }
             },
             child: Text(l10n.retry),
