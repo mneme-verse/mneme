@@ -62,9 +62,19 @@ jobs:
           channel: stable
           cache: true
 
+      - name: ⚡ Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/transforms-4
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: 📦 Install Dependencies
         run: flutter pub get
-
       - name: 🔑 Ephemeral debug keystore
         run: |
           keytool -genkeypair \
