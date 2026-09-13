@@ -355,7 +355,9 @@ class PoeTreeBuilder {
     final zipUrl = '$zenodoBaseUrl/$lang.zip';
     print('  ⬇️  Downloading $lang.zip...');
 
-    const maxAttempts = 5;
+    // Zenodo intermittently answers multi-gigabyte files with 504;
+    // eight attempts ride out a bad quarter-hour.
+    const maxAttempts = 8;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final response = await client.get(Uri.parse(zipUrl));
@@ -389,7 +391,7 @@ class PoeTreeBuilder {
         }
         print('     ⚠️  [$lang] Error: $e ($attempt/$maxAttempts)...');
       }
-      await (waitForRetry ?? Future.delayed)(Duration(seconds: 15 * attempt));
+      await (waitForRetry ?? Future.delayed)(Duration(seconds: 30 * attempt));
     }
   }
 
