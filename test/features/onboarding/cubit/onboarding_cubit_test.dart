@@ -12,7 +12,26 @@ import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:mneme/resources/resource_installer.dart';
 import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
+import 'package:mneme/resources/wake_lock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class FakeWakeLock implements DeviceWakeLock {
+  /// Acquire call count.
+  int acquires = 0;
+
+  /// Release call count.
+  int releases = 0;
+
+  @override
+  Future<void> acquire() async {
+    acquires++;
+  }
+
+  @override
+  Future<void> release() async {
+    releases++;
+  }
+}
 
 void main() {
   late Uri manifestUrl;
@@ -70,7 +89,7 @@ void main() {
     });
   }
 
-  OnboardingCubit buildCubit(http.Client client) {
+  OnboardingCubit buildCubit(http.Client client, {DeviceWakeLock? wakeLock}) {
     return OnboardingCubit(
       resources: ResourceRepository(
         modelDir: _tempDir('models'),
@@ -82,8 +101,35 @@ void main() {
         manifestUrl: manifestUrl,
       ),
       speechModel: fakeSpeechModel,
+      wakeLock: wakeLock,
     );
   }
+
+  group('WakeLock', () {
+    test('a successful install acquires once and releases once', () async {
+      final wakeLock = FakeWakeLock();
+      final cubit = buildCubit(fakeClient(), wakeLock: wakeLock);
+      addTearDown(cubit.close);
+      await cubit.selectLanguage('ru');
+      expect(wakeLock.acquires, 1);
+      expect(wakeLock.releases, 1);
+    });
+
+    test('a failed install still releases the lock', () async {
+      final wakeLock = FakeWakeLock();
+      final cubit = buildCubit(
+        fakeClient(manifestStatus: 500),
+        wakeLock: wakeLock,
+      );
+      addTearDown(cubit.close);
+      await expectLater(
+        cubit.selectLanguage('ru'),
+        throwsA(isA<Exception>()),
+      );
+      expect(wakeLock.acquires, 1);
+      expect(wakeLock.releases, 1);
+    });
+  });
 
   group('OnboardingCubit', () {
     test('initial state is language selection', () {

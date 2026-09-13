@@ -14,13 +14,13 @@ dependencies:
   crypto: ^3.0.7
   drift: ^2.20.3
   drift_flutter: ^0.2.2
+  ffi: ^2.1.0
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
   flutter_localizations:
     sdk: flutter
   fsrs: ^2.0.1
-  ffi: ^2.1.0
   http: ^1.2.2
   intl: ^0.20.2
   path: ^1.9.1
@@ -30,6 +30,7 @@ dependencies:
   sqlite3: ^2.9.0
   sqlite3_flutter_libs: ^0.5.41
   unorm_dart: 0.3.2
+  wakelock_plus: ^1.8.0
 
 
 dev_dependencies:
