@@ -78,13 +78,10 @@ android {
     }
 
     buildTypes {
+        // Template default: no minification. R8 hardening stays out until
+        // it can prove itself in the PR apk gate without blocking releases.
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android.txt"),
-                "proguard-rules.pro"
-            )
         }
         getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
