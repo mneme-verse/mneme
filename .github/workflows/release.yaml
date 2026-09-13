@@ -1,0 +1,109 @@
+# Release publication.
+#
+# App: pushing a tag `v*` builds a signed production arm64 APK and attaches
+# it (plus its SHA-256) to the GitHub Release for that tag. App release
+# tags (`v*`) and corpus data tags (`data-v*`) stay separate.
+#
+# Required repository secrets (Settings > Secrets > Actions):
+# - ANDROID_KEYSTORE_BASE64: base64 of the stable release keystore. Never
+#   commit the keystore or regenerate it casually: Android treats a new
+#   certificate as a different app identity.
+# - ANDROID_KEYSTORE_ALIAS
+# - ANDROID_KEYSTORE_PASSWORD
+# - ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD
+#
+# Corpus data: run this workflow manually with a language to build its
+# `.db.zst` pack (tool/builder.dart) and publish it to the `data-v*`
+# release (tool/publish_data.dart). No signing secrets are needed.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      corpus_language:
+        description: 'Build and publish one corpus pack (empty skips data)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', cs, de, en, hu, no, pt, ru, sl]
+
+jobs:
+  apk:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📚 Git Checkout
+        uses: actions/checkout@v7
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: '3.47.x'
+          channel: stable
+          cache: true
+
+      - name: 📦 Install Dependencies
+        run: flutter pub get
+
+      - name: 🔑 Restore release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" || \
+            (echo 'missing ANDROID_KEYSTORE_BASE64 secret' >&2; exit 1)
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+
+      - name: 🏗️ Build signed production APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
+        run: >
+          flutter build apk --release --flavor production
+          -t lib/main_production.dart --target-platform android-arm64
+
+      - name: 🚀 Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apk=build/app/outputs/flutter-apk/app-production-release.apk
+          sha256sum "$apk" | tee "$apk.sha256"
+          gh release upload "$GITHUB_REF_NAME" "$apk" "$apk.sha256" --clobber
+
+  corpus-data:
+    if: inputs.corpus_language != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📚 Git Checkout
+        uses: actions/checkout@v7
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          flutter-version: '3.47.x'
+          channel: stable
+          cache: true
+
+      - name: 📦 Install Dependencies
+        run: flutter pub get
+
+      - name: 🌳 Build corpus pack
+        run: >
+          dart run tool/builder.dart
+          --languages=${{ inputs.corpus_language }}
+          --clean-after=poetree,db
+
+      - name: 📤 Publish data release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: dart run tool/publish_data.dart
