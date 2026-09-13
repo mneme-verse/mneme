@@ -22,7 +22,7 @@ void main() {
   late MockFileSystem mockFs;
   late MockDirectory mockDbDir;
   late MockFile mockManifestFile;
-  late MockFile mockZstFile;
+  late MockFile mockGzFile;
   late List<String> commandLog;
 
   // Custom ProcessRunner for testing
@@ -45,7 +45,7 @@ void main() {
     mockFs = MockFileSystem();
     mockDbDir = MockDirectory();
     mockManifestFile = MockFile();
-    mockZstFile = MockFile();
+    mockGzFile = MockFile();
     commandLog = [];
 
     // Setup default happy path
@@ -54,9 +54,9 @@ void main() {
     when(mockDbDir.path).thenReturn('assets/database');
 
     // List returns one ZST file
-    when(mockDbDir.listSync()).thenReturn([mockZstFile]);
-    when(mockZstFile.path).thenReturn('assets/database/en.db.zst');
-    when(mockZstFile.readAsBytes()).thenAnswer((_) async => Uint8List(0));
+    when(mockDbDir.listSync()).thenReturn([mockGzFile]);
+    when(mockGzFile.path).thenReturn('assets/database/en.db.gz');
+    when(mockGzFile.readAsBytes()).thenAnswer((_) async => Uint8List(0));
 
     // Manifest file
     // Use precise path match or any
@@ -70,7 +70,7 @@ void main() {
         'license': {'text': 'dummy'},
         'en': {
           'version': '1.0+1',
-          'file': 'en.db.zst',
+          'file': 'en.db.gz',
         },
       }),
     );
@@ -88,7 +88,7 @@ void main() {
       expect(publisher.publish(), throwsException);
     });
 
-    test('throws if no zst files found', () async {
+    test('throws if no gz files found', () async {
       when(mockDbDir.listSync()).thenReturn([]);
       final publisher = DataPublisher(
         dbOutputDir: 'empty',
@@ -98,7 +98,7 @@ void main() {
 
       expect(
         publisher.publish(),
-        throwsA(predicate((e) => e.toString().contains('No .db.zst files'))),
+        throwsA(predicate((e) => e.toString().contains('No .db.gz files'))),
       );
     });
 
@@ -153,7 +153,7 @@ void main() {
 
       // 3. Upload assets
       expect(commandLog[2], contains('gh release upload data-v1.0+1'));
-      expect(commandLog[2], contains('assets/database/en.db.zst'));
+      expect(commandLog[2], contains('assets/database/en.db.gz'));
       expect(commandLog[2], contains('assets/database/manifest.json'));
     });
 
@@ -172,7 +172,7 @@ void main() {
           File('$dir/manifest.json').writeAsStringSync(
             jsonEncode({
               'license': {'text': 'dummy'},
-              'en': {'version': '1.0+1', 'file': 'en.db.zst'},
+              'en': {'version': '1.0+1', 'file': 'en.db.gz'},
             }),
           );
           return ProcessResult(0, 0, '', '');
@@ -192,7 +192,7 @@ void main() {
       // The merged manifest lives outside the local database dir.
       expect(upload, contains('mneme-publish'));
       expect(upload, isNot(contains('assets/database/manifest.json')));
-      expect(upload, contains('assets/database/en.db.zst'));
+      expect(upload, contains('assets/database/en.db.gz'));
     });
 
     test('aborts instead of clobbering on merge failure', () async {
@@ -203,7 +203,7 @@ void main() {
           if (args.contains('--json')) {
             // The release already publishes a manifest...
             return Future.value(
-              ProcessResult(0, 0, 'manifest.json\nen.db.zst', ''),
+              ProcessResult(0, 0, 'manifest.json\nen.db.gz', ''),
             );
           }
           // ...but its download fails transiently.

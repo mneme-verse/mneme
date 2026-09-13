@@ -45,7 +45,7 @@ void main() {
           utf8.encode(
             json.encode({
               'ru': {
-                'file': 'ru.db.zst',
+                'file': 'ru.db.gz',
                 'name': 'Русский',
                 'size': corpusBytes.length,
                 'sha256': corpusSha256,
@@ -58,7 +58,7 @@ void main() {
         );
       }
       final segment = request.url.pathSegments.last;
-      if (segment == 'ru.db.zst') {
+      if (segment == 'ru.db.gz') {
         return http.Response.bytes(corpusBytes, 200);
       }
       if (request.url.toString() ==
@@ -203,7 +203,7 @@ void main() {
       final manifestBody = utf8.encode(
         json.encode({
           'ru': {
-            'file': 'ru.db.zst',
+            'file': 'ru.db.gz',
             'name': 'Русский',
             'size': corpusBytes.length,
             'sha256': corpusSha256,
@@ -252,7 +252,7 @@ void main() {
         await pending.catchError((_) {});
         if (!cubit.isClosed) await cubit.close();
       });
-      final part = File('${corpusDir.path}/ru.db.zst.part');
+      final part = File('${corpusDir.path}/ru.db.gz.part');
       for (var i = 0; i < 500; i++) {
         if (part.existsSync() && part.lengthSync() >= half) break;
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -275,7 +275,7 @@ void main() {
       final manifestBody = utf8.encode(
         json.encode({
           'ru': {
-            'file': 'ru.db.zst',
+            'file': 'ru.db.gz',
             'name': 'Русский',
             'size': corpusBytes.length,
             'sha256': corpusSha256,

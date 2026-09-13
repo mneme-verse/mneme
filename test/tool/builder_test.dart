@@ -393,8 +393,8 @@ void main() {
 
     test('generateManifest creates manifest with license', () async {
       final builder = PoeTreeBuilder(dbOutputDir: tempDir.path);
-      // Create a dummy .db.zst file so generateManifest calculates hash/size and writes file
-      File(path.join(tempDir.path, 'en.db.zst')).writeAsBytesSync([1, 2, 3]);
+      // Create a dummy .db.gz file so generateManifest calculates hash/size and writes file
+      File(path.join(tempDir.path, 'en.db.gz')).writeAsBytesSync([1, 2, 3]);
 
       await builder.generateManifest();
 
@@ -470,7 +470,7 @@ void main() {
       expect(compressedFiles, isNot(contains('fr.db')));
     });
 
-    test('compressDatabases skips if .zst exists', () async {
+    test('compressDatabases skips if .gz exists', () async {
       // Track which files were compressed
       final compressedFiles = <String>[];
 
@@ -481,10 +481,10 @@ void main() {
         },
       );
 
-      // Create .db and .db.zst files
+      // Create .db and .db.gz files
       File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
       File(
-        path.join(tempDir.path, 'en.db.zst'),
+        path.join(tempDir.path, 'en.db.gz'),
       ).writeAsBytesSync([5, 6, 7, 8]);
 
       // Attempt compression
@@ -500,7 +500,7 @@ void main() {
       expect(dbContent, [1, 2, 3, 4]);
     });
 
-    test('compressDatabases runs if .zst does not exist', () async {
+    test('compressDatabases runs if .gz does not exist', () async {
       // Track which files were compressed
       final compressedFiles = <String>[];
 
@@ -514,10 +514,10 @@ void main() {
       // Create .db file only
       File(path.join(tempDir.path, 'en.db')).writeAsBytesSync([1, 2, 3, 4]);
 
-      // Ensure .zst does not exist
-      final zstFile = File(path.join(tempDir.path, 'en.db.zst'));
-      if (zstFile.existsSync()) {
-        zstFile.deleteSync();
+      // Ensure .gz does not exist
+      final gzFile = File(path.join(tempDir.path, 'en.db.gz'));
+      if (gzFile.existsSync()) {
+        gzFile.deleteSync();
       }
 
       // Attempt compression

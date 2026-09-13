@@ -31,25 +31,25 @@ void main() {
   });
 
   test('pack URL stays inside the manifest release directory', () async {
-    final client = clientFor({'ru': entry(file: 'ru.db.zst')});
+    final client = clientFor({'ru': entry(file: 'ru.db.gz')});
     final pack = await client.packFor('ru');
 
-    expect(pack.file, 'ru.db.zst');
+    expect(pack.file, 'ru.db.gz');
     final url = client.packUrl(pack);
     expect(
       url.toString(),
-      '${corpusReleaseBase(corpusReleaseTag)}ru.db.zst',
+      '${corpusReleaseBase(corpusReleaseTag)}ru.db.gz',
     );
   });
 
   test('manifest-controlled file names cannot traverse directories', () async {
     for (final file in [
-      '../../outside.db.zst',
-      'sub/ru.db.zst',
-      r'sub\ru.db.zst',
-      '/abs.db.zst',
+      '../../outside.db.gz',
+      'sub/ru.db.gz',
+      r'sub\ru.db.gz',
+      '/abs.db.gz',
       // Well-formed but not the language-keyed pack the connection opens.
-      'other.db.zst',
+      'other.db.gz',
     ]) {
       await expectLater(
         clientFor({'ru': entry(file: file)}).packFor('ru'),
@@ -64,15 +64,15 @@ void main() {
       'not JSON': 'this is not json',
       'JSON array': '[1, 2]',
       'JSON number': '42',
-      'missing entry': jsonEncode({'en': entry(file: 'en.db.zst')}),
+      'missing entry': jsonEncode({'en': entry(file: 'en.db.gz')}),
       'bad schema': jsonEncode({
-        'ru': {...entry(file: 'ru.db.zst'), 'schema_version': 1},
+        'ru': {...entry(file: 'ru.db.gz'), 'schema_version': 1},
       }),
       'bad hash': jsonEncode({
-        'ru': {...entry(file: 'ru.db.zst'), 'sha256': 'xyz'},
+        'ru': {...entry(file: 'ru.db.gz'), 'sha256': 'xyz'},
       }),
       'bad size': jsonEncode({
-        'ru': {...entry(file: 'ru.db.zst'), 'size': 0},
+        'ru': {...entry(file: 'ru.db.gz'), 'size': 0},
       }),
     };
     for (final body in badManifests.values) {

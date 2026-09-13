@@ -1,7 +1,14 @@
 # Database Compression Decision
 
-**Date:** 2025-12-27
-**Status:** Accepted
+**Date:** 2025-12-27, **superseded 2026-09-13**
+**Status:** Reversed — GZip (`dart:io`) replaces Zstandard
+
+> ZSTD was selected for its ratio, but its Flutter packaging (`es_compression`)
+> ships only a Linux x86_64 native blob: `DynamicLibrary.open` fails on arm64
+> Android (verified on-device 2026-09-13, issue #48), and the package's Android
+> route requires sideloading opaque third-party prebuilt `.so` files. GZip
+> decodes with `dart:io` on every platform at the cost of larger packs. Packs
+> are now `assets/database/*.db.gz`; the client contract is `<lang>.db.gz`.
 
 ## Context
 The application ships with multiple SQLite databases (one per language) in `assets/database/`. To reduce the distribution size (APK/IPA/AAB), these assets must be compressed.

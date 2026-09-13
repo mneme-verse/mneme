@@ -14,7 +14,6 @@ dependencies:
   crypto: ^3.0.7
   drift: ^2.20.3
   drift_flutter: ^0.2.2
-  es_compression: ^2.0.15
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1

@@ -122,7 +122,7 @@ class ResourceRepository {
 
   /// Installs one corpus pack described by a manifest entry.
   ///
-  /// [id] is the pack filename, e.g. `ru.db.zst`; [sha256] and [sizeBytes]
+  /// [id] is the pack filename, e.g. `ru.db.gz`; [sha256] and [sizeBytes]
   /// come from the published manifest.json and are enforced exactly like
   /// speech models.
   Future<File> installCorpusPack(

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:es_compression/zstd.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/db/connection/flutter_connection.dart';
@@ -68,8 +67,8 @@ void main() {
     await insertPoem(source, 'Pack poem');
     final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
     await File(
-      p.join(packDir.path, 'ru.db.zst'),
-    ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
+      p.join(packDir.path, 'ru.db.gz'),
+    ).writeAsBytes(GZipCodec().encode(await source.readAsBytes()));
 
     await insertPoem(File(p.join(docsDir.path, 'ru.db')), 'Stale poem');
 
@@ -88,8 +87,8 @@ void main() {
     await insertPoem(source, 'Pack poem');
     final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
     await File(
-      p.join(packDir.path, 'ru.db.zst'),
-    ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
+      p.join(packDir.path, 'ru.db.gz'),
+    ).writeAsBytes(GZipCodec().encode(await source.readAsBytes()));
 
     expect(await readTitles('ru'), ['Pack poem']);
   });
@@ -99,8 +98,8 @@ void main() {
     await insertPoem(source, 'Pack poem');
     final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
     await File(
-      p.join(packDir.path, 'ru.db.zst'),
-    ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
+      p.join(packDir.path, 'ru.db.gz'),
+    ).writeAsBytes(GZipCodec().encode(await source.readAsBytes()));
     await insertPoem(File(p.join(docsDir.path, 'ru.db')), 'Stale poem');
 
     expect(await readTitles('ru'), ['Pack poem']);
