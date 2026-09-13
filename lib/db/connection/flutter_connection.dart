@@ -61,9 +61,12 @@ QueryExecutor openCorpusConnection({
       native: DriftNativeOptions(
         databasePath: () async => file.path,
         // Explicit so opening never touches path_provider method channels
-        // (and avoids /tmp on sandboxed platforms).
+        // (and avoids /tmp on sandboxed platforms). drift_flutter calls
+        // this once per process, so coverage cannot deterministically hit
+        // it under randomized suite order.
+        // coverage:ignore-start
         tempDirectoryPath: () async => supportDir.path,
-        shareAcrossIsolates: true,
+        // coverage:ignore-end
       ),
     );
   });

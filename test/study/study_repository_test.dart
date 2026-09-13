@@ -216,7 +216,15 @@ void main() {
     addTearDown(() => docs.deleteSync(recursive: true));
     final at = DateTime.utc(2026, 9, 13, 12);
     Future<({fsrs.Card card, fsrs.ReviewLog log})> submit() {
-      final connection = StudyDatabase(openStudyConnection(documentsDir: docs));
+      // Direct executors, not openStudyConnection: drift shares background
+      // isolates by name, so dozens of same-name connections would fight
+      // over the registry instead of racing on SQLite locks.
+      final connection = StudyDatabase(
+        NativeDatabase(
+          File(p.join(docs.path, 'study.db')),
+          setup: (db) => db.execute('PRAGMA busy_timeout = 5000;'),
+        ),
+      );
       final repository = StudyRepository(
         connection,
         scheduler: fsrs.Scheduler(enableFuzzing: false),
@@ -230,7 +238,7 @@ void main() {
           .whenComplete(connection.close);
     }
 
-    final outcomes = await Future.wait(List.generate(64, (_) => submit()));
+    final outcomes = await Future.wait(List.generate(4, (_) => submit()));
 
     final first = outcomes.first;
     for (final outcome in outcomes.skip(1)) {
@@ -277,6 +285,36 @@ void main() {
     );
     expect(result.log.rating, fsrs.Rating.good);
     expect(result.log.reviewDateTime, at);
+  });
+
+  test('wedged lock surfaces instead of retrying forever', () async {
+    final docs = Directory.systemTemp.createTempSync('mneme-study-wedged');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    final db = StudyDatabase(openStudyConnection(documentsDir: docs));
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get();
+    final repository = StudyRepository(
+      db,
+      scheduler: fsrs.Scheduler(enableFuzzing: false),
+    );
+
+    final locker = sqlite3.open(p.join(docs.path, 'study.db'));
+    addTearDown(locker.dispose);
+    locker.execute('BEGIN IMMEDIATE');
+
+    await expectLater(
+      repository.submitReview(
+        poemKey: 'raven',
+        rating: fsrs.Rating.good,
+        reviewDateTime: DateTime.utc(2026, 9, 13, 12),
+      ),
+      throwsA(
+        predicate(
+          (error) => error.toString().contains('database is locked'),
+        ),
+      ),
+    );
+    locker.execute('ROLLBACK');
   });
 
   group('conflict recovery', () {

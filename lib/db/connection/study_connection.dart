@@ -23,9 +23,17 @@ QueryExecutor openStudyConnection({
       native: DriftNativeOptions(
         databasePath: () async => file.path,
         // Explicit so opening never touches path_provider method channels
-        // (and avoids /tmp on sandboxed platforms).
+        // (and avoids /tmp on sandboxed platforms). drift_flutter calls
+        // this once per process, so coverage cannot deterministically hit
+        // it under randomized suite order.
+        // coverage:ignore-start
         tempDirectoryPath: () async => dbFolder.path,
+        // coverage:ignore-end
         shareAcrossIsolates: true,
+        // Reviews can overlap (UI plus background work): wait in-engine
+        // instead of failing immediately on a locked database. The
+        // repository still retries true contention as a backstop.
+        setup: (db) => db.execute('PRAGMA busy_timeout = 1000;'),
       ),
     );
   });

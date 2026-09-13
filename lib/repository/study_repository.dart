@@ -90,28 +90,25 @@ class StudyRepository {
     int? reviewDuration,
   }) async {
     final at = (reviewDateTime ?? DateTime.now().toUtc()).toUtc();
-    // A busy snapshot (concurrent writer) backs off and retries once;
-    // anything else propagates.
-    try {
-      return await _db.transaction(
-        () => _submitOnce(
-          poemKey: poemKey,
-          rating: rating,
-          at: at,
-          reviewDuration: reviewDuration,
-        ),
-      );
-    } on Exception catch (error) {
-      if (_sqliteResultCode(error) != _sqliteBusy) rethrow;
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      return _db.transaction(
-        () => _submitOnce(
-          poemKey: poemKey,
-          rating: rating,
-          at: at,
-          reviewDuration: reviewDuration,
-        ),
-      );
+    // A busy snapshot (concurrent writer) backs off and retries; anything
+    // else propagates. Five attempts ride out submission bursts without
+    // spinning forever on a wedged lock.
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _db.transaction(
+          () => _submitOnce(
+            poemKey: poemKey,
+            rating: rating,
+            at: at,
+            reviewDuration: reviewDuration,
+          ),
+        );
+      } on Exception catch (error) {
+        if (_sqliteResultCode(error) != _sqliteBusy || attempt >= 4) {
+          rethrow;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 50 * (attempt + 1)));
+      }
     }
   }
 

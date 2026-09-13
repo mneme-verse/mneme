@@ -190,40 +190,41 @@ void main() {
     });
 
     test('cancel during install emits failed state', () async {
-      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final half = corpusBytes.length ~/ 2;
       final resume = Completer<void>();
-      server.listen((request) async {
-        if (request.uri.path == '/manifest.json') {
-          final body = utf8.encode(
-            json.encode({
-              'ru': {
-                'file': 'ru.db.zst',
-                'name': 'Русский',
-                'size': corpusBytes.length,
-                'sha256': corpusSha256,
-                'version': '1.0+2',
-                'schema_version': 2,
-              },
-            }),
+      final manifestBody = utf8.encode(
+        json.encode({
+          'ru': {
+            'file': 'ru.db.zst',
+            'name': 'Русский',
+            'size': corpusBytes.length,
+            'sha256': corpusSha256,
+            'version': '1.0+2',
+            'schema_version': 2,
+          },
+        }),
+      );
+      final client = _ScriptedClient((request) async {
+        if (request.url.path == '/manifest.json') {
+          return http.StreamedResponse(
+            Stream.value(manifestBody),
+            200,
+            contentLength: manifestBody.length,
           );
-          request.response
-            ..statusCode = 200
-            ..add(body);
-          await request.response.close();
-          return;
         }
         // Two chunks with a gate between them: the test cancels while the
         // first half sits in the partial file, so the failure cannot race
         // the download.
-        request.response.statusCode = 200;
-        request.response.add(corpusBytes.sublist(0, half));
-        await request.response.flush();
-        await resume.future;
-        request.response.add(corpusBytes.sublist(half));
-        await request.response.close();
+        return http.StreamedResponse(
+          (() async* {
+            yield corpusBytes.sublist(0, half);
+            await resume.future;
+            yield corpusBytes.sublist(half);
+          })(),
+          200,
+          contentLength: corpusBytes.length,
+        );
       });
-      final client = http.Client();
       final corpusDir = _tempDir('corpora');
       final cubit = OnboardingCubit(
         resources: ResourceRepository(
@@ -233,9 +234,7 @@ void main() {
         ),
         manifestClient: CorpusManifestClient(
           client: client,
-          manifestUrl: Uri.parse(
-            'http://127.0.0.1:${server.port}/manifest.json',
-          ),
+          manifestUrl: Uri.parse('https://example.test/manifest.json'),
         ),
         speechModel: fakeSpeechModel,
       );
@@ -244,8 +243,6 @@ void main() {
         if (!resume.isCompleted) resume.complete();
         await pending.catchError((_) {});
         if (!cubit.isClosed) await cubit.close();
-        client.close();
-        await server.close(force: true);
       });
       final part = File('${corpusDir.path}/ru.db.zst.part');
       for (var i = 0; i < 500; i++) {
@@ -267,4 +264,16 @@ Directory _tempDir(String prefix) {
   final dir = Directory.systemTemp.createTempSync('mneme-onboarding-$prefix');
   addTearDown(() => dir.deleteSync(recursive: true));
   return dir;
+}
+
+/// Scripts HTTP responses without sockets; see the installer tests for why
+/// real loopback servers are avoided here.
+class _ScriptedClient extends http.BaseClient {
+  _ScriptedClient(this._handler);
+
+  final Future<http.StreamedResponse> Function(http.BaseRequest) _handler;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _handler(request);
 }

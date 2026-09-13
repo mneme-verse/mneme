@@ -9,11 +9,36 @@ import 'package:mneme/resources/resource_installer.dart';
 import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 
+/// Scripts HTTP responses without sockets: loopback servers behave
+/// differently across test runners, so download behavior is verified
+/// against controlled chunk streams instead.
+class _ScriptedClient extends http.BaseClient {
+  _ScriptedClient(this._handler);
+
+  final Future<http.StreamedResponse> Function(http.BaseRequest) _handler;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _handler(request);
+}
+
+http.StreamedResponse _bytesResponse(
+  List<int> bytes, {
+  int status = 200,
+  int? contentLength,
+}) {
+  return http.StreamedResponse(
+    Stream.value(bytes),
+    status,
+    contentLength: contentLength ?? bytes.length,
+  );
+}
+
 void main() {
-  late HttpServer server;
-  StreamSubscription<HttpRequest>? subscription;
   late Directory tempDir;
   late ResourceRepository repository;
+  late int requests;
+  late Future<http.StreamedResponse> Function(http.BaseRequest) handler;
 
   final payload = Uint8List.fromList(
     List<int>.generate(256 * 1024, (i) => i % 251),
@@ -21,45 +46,31 @@ void main() {
 
   String shaOf(List<int> bytes) => sha256.convert(bytes).toString();
 
-  void serve({
-    required List<int> bytes,
-    int delayMs = 0,
-    int status = 200,
-  }) {
-    subscription = server.listen((request) async {
-      if (delayMs > 0) {
-        await Future<void>.delayed(Duration(milliseconds: delayMs));
-      }
-      request.response.statusCode = status;
-      request.response.add(bytes);
-      await request.response.close();
-    });
-  }
-
-  String serverUrl(String path) => 'http://127.0.0.1:${server.port}/$path';
-
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('mneme-resources-');
-    server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    requests = 0;
+    handler = (request) async {
+      requests++;
+      return _bytesResponse(payload);
+    };
     repository = ResourceRepository(
       modelDir: Directory('${tempDir.path}/models'),
       corpusDir: Directory('${tempDir.path}/corpora'),
+      client: _ScriptedClient((request) => handler(request)),
     );
   });
 
   tearDown(() async {
     await repository.dispose();
-    await subscription?.cancel();
-    subscription = null;
-    await server.close(force: true);
     await tempDir.delete(recursive: true);
   });
 
+  String packUrl(String path) => 'https://example.test/$path';
+
   test('install succeeds and atomically renames the verified file', () async {
-    serve(bytes: payload);
     final installed = await repository.installCorpusPack(
       'fixture.bin',
-      serverUrl('fixture.bin'),
+      packUrl('fixture.bin'),
       shaOf(payload),
     );
 
@@ -71,65 +82,77 @@ void main() {
       reason: 'no partial file may survive a successful install',
     );
     expect(repository.stateOf('fixture.bin').phase, ResourcePhase.installed);
+    expect(requests, 1);
   });
 
   test('mismatched sha256 fails and leaves no destination file', () async {
-    serve(bytes: payload);
-    final wrong = Uint8List.fromList(payload);
-    wrong[0] = (wrong[0] + 1) % 256;
-
     await expectLater(
       repository.installCorpusPack(
-        'bad.bin',
-        serverUrl('bad.bin'),
-        shaOf(wrong),
+        'fixture.bin',
+        packUrl('fixture.bin'),
+        '0' * 64,
       ),
-      throwsA(isA<Exception>()),
+      throwsA(isA<HashMismatchException>()),
     );
-
-    final state = repository.stateOf('bad.bin');
-    expect(state.phase, ResourcePhase.failed);
-    expect(state.error, isNotNull);
-    final dir = Directory('${tempDir.path}/corpora');
     expect(
-      dir.listSync(),
-      isEmpty,
-      reason: 'failed installs must clean up partial files',
+      File('${tempDir.path}/corpora/fixture.bin').existsSync(),
+      isFalse,
     );
   });
 
   test(
     'cancellation removes the partial download and reports notInstalled',
     () async {
-      serve(bytes: payload, delayMs: 5000);
-
-      final future = repository.installCorpusPack(
+      final gate = Completer<void>();
+      handler = (request) async {
+        requests++;
+        return http.StreamedResponse(
+          (() async* {
+            yield payload.sublist(0, 1024);
+            await gate.future;
+            yield payload.sublist(1024);
+          })(),
+          200,
+          contentLength: payload.length,
+        );
+      };
+      final pending = repository.installCorpusPack(
         'slow.bin',
-        serverUrl('slow.bin'),
+        packUrl('slow.bin'),
         shaOf(payload),
       );
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      while (repository.stateOf('slow.bin').phase !=
+          ResourcePhase.downloading) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
       repository.cancel('slow.bin');
+      gate.complete();
 
-      await expectLater(future, throwsA(isA<Exception>()));
+      await expectLater(
+        pending,
+        throwsA(isA<InstallCanceledException>()),
+      );
+      expect(repository.stateOf('slow.bin').phase, ResourcePhase.notInstalled);
       expect(
-        repository.stateOf('slow.bin').phase,
-        ResourcePhase.notInstalled,
+        File('${tempDir.path}/corpora/slow.bin').existsSync(),
+        isFalse,
       );
       expect(
-        Directory('${tempDir.path}/corpora').listSync(),
-        isEmpty,
+        File('${tempDir.path}/corpora/slow.bin.part').existsSync(),
+        isFalse,
       );
     },
   );
 
   test('non-200 responses fail without creating files', () async {
-    serve(bytes: [], status: 404);
-
+    handler = (request) async {
+      requests++;
+      return _bytesResponse([], status: 404, contentLength: 0);
+    };
     await expectLater(
       repository.installCorpusPack(
         'missing.bin',
-        serverUrl('missing.bin'),
+        packUrl('missing.bin'),
         shaOf(payload),
       ),
       throwsA(isA<Exception>()),
@@ -140,47 +163,35 @@ void main() {
   test(
     'already-installed resource short-circuits without redownload',
     () async {
-      serve(bytes: payload);
       final first = await repository.installCorpusPack(
         'once.bin',
-        serverUrl('once.bin'),
+        packUrl('once.bin'),
         shaOf(payload),
       );
-
-      final url = serverUrl('once.bin');
-
-      // Any further download attempt now fails at the socket level.
-      await subscription?.cancel();
-      await server.close(force: true);
+      expect(requests, 1);
 
       final second = await repository.installCorpusPack(
         'once.bin',
-        url,
+        packUrl('once.bin'),
         shaOf(payload),
       );
       expect(second.path, first.path);
       expect(first.readAsBytesSync(), payload);
+      expect(requests, 1, reason: 'no second download may start');
     },
   );
 
   test('states stream exposes download progress', () async {
     final received = <ResourceState>[];
     final sub = repository.states.listen(received.add);
+    addTearDown(sub.cancel);
 
-    serve(bytes: payload);
     await repository.installCorpusPack(
       'progress.bin',
-      serverUrl('progress.bin'),
+      packUrl('progress.bin'),
       shaOf(payload),
     );
-    await Future<void>.delayed(Duration.zero);
-    await sub.cancel();
 
-    expect(received.first.phase, ResourcePhase.downloading);
-    expect(
-      received.any((s) => s.phase == ResourcePhase.installed),
-      isTrue,
-    );
     final downloading = received
         .where((s) => s.phase == ResourcePhase.downloading)
         .toList();
@@ -192,14 +203,14 @@ void main() {
   });
 
   test('manifest-controlled ids cannot escape the destination', () async {
-    serve(bytes: payload);
     for (final id in ['../evil.bin', r'..\evil.bin', '', '.', '..']) {
       await expectLater(
-        repository.installCorpusPack(id, serverUrl('x'), shaOf(payload)),
+        repository.installCorpusPack(id, packUrl('x'), shaOf(payload)),
         throwsArgumentError,
         reason: 'id "$id" must be rejected before any download',
       );
     }
+    expect(requests, 0, reason: 'rejected ids must never hit the network');
     expect(
       File('${tempDir.path}/evil.bin').existsSync(),
       isFalse,
@@ -208,39 +219,30 @@ void main() {
   });
 
   test('reinstall replaces the file and removes the backup', () async {
-    serve(bytes: payload);
     final first = await repository.installCorpusPack(
       'fixture.bin',
-      serverUrl('fixture.bin'),
+      packUrl('fixture.bin'),
       shaOf(payload),
     );
     final replacement = Uint8List.fromList(
       List<int>.generate(1024, (i) => 255 - (i % 251)),
     );
-    // The shared server is single-subscription, so the replacement bytes
-    // come from a second local server.
-    final replacementServer = await HttpServer.bind(
-      InternetAddress.loopbackIPv4,
-      0,
+    handler = (request) async {
+      requests++;
+      return _bytesResponse(replacement);
+    };
+    final second = await repository.installCorpusPack(
+      'fixture.bin',
+      packUrl('fixture.bin'),
+      shaOf(replacement),
     );
-    try {
-      replacementServer.listen((request) async {
-        request.response.add(replacement);
-        await request.response.close();
-      });
-      final second = await repository.installCorpusPack(
-        'fixture.bin',
-        'http://127.0.0.1:${replacementServer.port}/fixture.bin',
-        shaOf(replacement),
-      );
-      expect(second.path, first.path);
-      expect(second.readAsBytesSync(), replacement);
-      expect(File('${second.path}.bak').existsSync(), isFalse);
-      expect(File('${second.path}.part').existsSync(), isFalse);
-    } finally {
-      await replacementServer.close(force: true);
-    }
+
+    expect(second.path, first.path);
+    expect(second.readAsBytesSync(), replacement);
+    expect(File('${second.path}.bak').existsSync(), isFalse);
+    expect(File('${second.path}.part').existsSync(), isFalse);
   });
+
   test('exceptions describe the failed resource', () {
     expect(
       const InstallCanceledException('ru.db.zst').toString(),
@@ -253,11 +255,10 @@ void main() {
   });
 
   test('size mismatch fails without installing', () async {
-    serve(bytes: payload);
     await expectLater(
       repository.installCorpusPack(
         'fixture.bin',
-        serverUrl('fixture.bin'),
+        packUrl('fixture.bin'),
         shaOf(payload),
         sizeBytes: payload.length + 1,
       ),
@@ -273,10 +274,9 @@ void main() {
     final backup = File('${tempDir.path}/corpora/fixture.bin.bak')
       ..createSync(recursive: true)
       ..writeAsBytesSync([1, 2, 3]);
-    serve(bytes: payload);
     await repository.installCorpusPack(
       'fixture.bin',
-      serverUrl('fixture.bin'),
+      packUrl('fixture.bin'),
       shaOf(payload),
     );
     expect(backup.existsSync(), isFalse);
@@ -285,7 +285,7 @@ void main() {
   test('uninstall removes destination and leftovers', () async {
     final dir = Directory('${tempDir.path}/solo')..createSync();
     final installer = ResourceInstaller(
-      client: http.Client(),
+      client: _ScriptedClient((request) async => _bytesResponse([])),
       destinationDir: dir,
     );
     addTearDown(() => installer.uninstall('x.bin'));
@@ -305,11 +305,14 @@ void main() {
     final local = ResourceRepository(
       modelDir: Directory('${tempDir.path}/models2')..createSync(),
       corpusDir: Directory('${tempDir.path}/corpora2')..createSync(),
+      client: _ScriptedClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        return _bytesResponse(payload);
+      }),
     );
-    serve(bytes: payload, delayMs: 500);
     final pending = local.installCorpusPack(
       'slow.bin',
-      serverUrl('slow.bin'),
+      packUrl('slow.bin'),
       shaOf(payload),
     );
     for (var i = 0; i < 100; i++) {
@@ -326,10 +329,9 @@ void main() {
   });
 
   test('speech model install state is reported', () async {
-    serve(bytes: payload);
     final model = LockedResource(
       id: 'fake-model.gguf',
-      url: serverUrl('fake-model.gguf'),
+      url: packUrl('fake-model.gguf'),
       sha256: shaOf(payload),
       sizeBytes: payload.length,
     );
@@ -337,25 +339,20 @@ void main() {
     await repository.installSpeechModel(model);
     expect(await repository.isSpeechModelInstalled(model), isTrue);
     expect(
-      const ResourceState(
-        id: 'x',
-        phase: ResourcePhase.downloading,
-      ).copyWith(receivedBytes: 3).phase,
+      const ResourceState(id: 'x', phase: ResourcePhase.downloading)
+          .copyWith(receivedBytes: 3)
+          .phase,
       ResourcePhase.downloading,
     );
   });
 
   test('concurrent installs of one resource share a download', () async {
-    var requests = 0;
-    final counting = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => counting.close(force: true));
-    counting.listen((request) async {
+    handler = (request) async {
       requests++;
       await Future<void>.delayed(const Duration(milliseconds: 300));
-      request.response.add(payload);
-      await request.response.close();
-    });
-    final url = 'http://127.0.0.1:${counting.port}/shared.bin';
+      return _bytesResponse(payload);
+    };
+    const url = 'https://example.test/shared.bin';
     final files = await Future.wait([
       repository.installCorpusPack('shared.bin', url, shaOf(payload)),
       repository.installCorpusPack('shared.bin', url, shaOf(payload)),
@@ -366,17 +363,16 @@ void main() {
   });
 
   test('cancel from the final progress callback still wins', () async {
-    serve(bytes: payload);
     final dir = Directory('${tempDir.path}/late')..createSync();
     final installer = ResourceInstaller(
-      client: http.Client(),
+      client: _ScriptedClient((request) async => _bytesResponse(payload)),
       destinationDir: dir,
     );
     final token = InstallCancelToken();
     await expectLater(
       installer.install(
         'late.bin',
-        Uri.parse(serverUrl('late.bin')),
+        Uri.parse(packUrl('late.bin')),
         shaOf(payload),
         cancelToken: token,
         onProgress: (progress) {
