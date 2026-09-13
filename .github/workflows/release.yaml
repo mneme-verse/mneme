@@ -100,7 +100,8 @@ jobs:
           code=$?
           if [ $code -ne 0 ]; then
             detail=$(grep -A10 'What went wrong' /tmp/apk.log | head -n 25 | tr '\n' '|')
-            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' /tmp/apk.log | head -n 5 | tr '\n' '|') detail: $detail"
+            missing=$(grep -e 'Missing class' -e 'Missing definitions' /tmp/apk.log | sort -u | head -n 10 | tr '\n' '|')
+            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' /tmp/apk.log | head -n 5 | tr '\n' '|') detail: $detail missing: $missing"
             tail -n 40 /tmp/apk.log
             exit $code
           fi
