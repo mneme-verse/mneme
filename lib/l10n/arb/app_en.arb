@@ -24,5 +24,45 @@
                 "type": "int"
             }
         }
+    },
+    "installingResources": "Installing offline resources…",
+    "@installingResources": {
+        "description": "Title while onboarding resources install"
+    },
+    "installingCorpus": "Downloading poem corpus",
+    "@installingCorpus": {
+        "description": "Label for the corpus download step"
+    },
+    "installingModel": "Downloading speech model",
+    "@installingModel": {
+        "description": "Label for the speech model download step"
+    },
+    "downloadProgress": "{received} of {total} MB",
+    "@downloadProgress": {
+        "description": "Downloaded byte progress",
+        "placeholders": {
+            "received": {
+                "type": "int"
+            },
+            "total": {
+                "type": "int"
+            }
+        }
+    },
+    "cancel": "Cancel",
+    "@cancel": {
+        "description": "Cancel button during installation"
+    },
+    "retry": "Retry",
+    "@retry": {
+        "description": "Retry button after failure"
+    },
+    "installationFailed": "Installation failed",
+    "@installationFailed": {
+        "description": "Error title after a failed install"
+    },
+    "chooseDifferentLanguage": "Choose a different language",
+    "@chooseDifferentLanguage": {
+        "description": "Return to language selection after failure"
     }
 }

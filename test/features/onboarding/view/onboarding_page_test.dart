@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -5,108 +7,141 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mneme/features/onboarding/cubit/onboarding_cubit.dart';
 import 'package:mneme/features/onboarding/view/onboarding_page.dart';
 import 'package:mneme/l10n/gen/app_localizations.dart';
-import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/resources/corpus_manifest.dart';
+import 'package:mneme/resources/resource_repository.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class MockOnboardingCubit extends MockCubit<String?>
+class MockOnboardingCubit extends MockCubit<OnboardingState>
     implements OnboardingCubit {}
 
-class MockPoetryRepository extends Mock implements PoetryRepository {}
-
 void main() {
-  group('OnboardingPage', () {
+  group('OnboardingView', () {
     late OnboardingCubit onboardingCubit;
-    late PoetryRepository poetryRepository;
 
     setUp(() {
+      SharedPreferences.setMockInitialValues({});
       onboardingCubit = MockOnboardingCubit();
-      poetryRepository = MockPoetryRepository();
+      whenListen(
+        onboardingCubit,
+        Stream.value(const OnboardingState.languageSelection()),
+        initialState: const OnboardingState.languageSelection(),
+      );
+      when(
+        () => onboardingCubit.selectLanguage(any()),
+      ).thenAnswer((_) async {});
     });
 
     Widget buildSubject() {
-      return RepositoryProvider.value(
-        value: poetryRepository,
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: BlocProvider.value(
-            value: onboardingCubit,
-            child: const OnboardingView(),
-          ),
+      return MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: BlocProvider.value(
+          value: onboardingCubit,
+          child: const OnboardingView(),
         ),
       );
     }
 
-    testWidgets('renders language selection structure', (tester) async {
-      await tester.pumpWidget(buildSubject());
-      expect(find.text('Select Language'), findsOneWidget);
-      expect(find.text('English'), findsOneWidget);
-      expect(find.text('Русский'), findsOneWidget);
-    });
-
-    testWidgets('calls completeOnboarding when language selected', (
+    testWidgets('renders language selection with Russian first', (
       tester,
     ) async {
-      when(
-        () => onboardingCubit.completeOnboarding(any()),
-      ).thenAnswer((_) async {});
       await tester.pumpWidget(buildSubject());
+      expect(find.text('Select Language'), findsOneWidget);
+      final russian = find.text('Русский');
+      final english = find.text('English');
+      expect(russian, findsOneWidget);
+      expect(english, findsOneWidget);
+      expect(
+        tester.getTopLeft(russian).dy < tester.getTopLeft(english).dy,
+        isTrue,
+        reason: 'Russian must be offered first',
+      );
+    });
 
+    testWidgets('calls selectLanguage when a language is tapped', (
+      tester,
+    ) async {
+      await tester.pumpWidget(buildSubject());
       await tester.tap(find.text('English'));
-      verify(() => onboardingCubit.completeOnboarding('en')).called(1);
+      verify(() => onboardingCubit.selectLanguage('en')).called(1);
+    });
+
+    testWidgets('shows progress and cancel while installing', (tester) async {
+      whenListen(
+        onboardingCubit,
+        Stream.value(
+          const OnboardingState(
+            phase: OnboardingPhase.installing,
+            language: 'ru',
+            resource: OnboardingResource.corpus,
+            receivedBytes: 10,
+            totalBytes: 100,
+          ),
+        ),
+        initialState: const OnboardingState(
+          phase: OnboardingPhase.installing,
+          language: 'ru',
+          resource: OnboardingResource.corpus,
+          receivedBytes: 10,
+          totalBytes: 100,
+        ),
+      );
+      await tester.pumpWidget(buildSubject());
+      expect(find.text('Downloading poem corpus'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows retry and language change after failure', (
+      tester,
+    ) async {
+      whenListen(
+        onboardingCubit,
+        Stream.value(
+          OnboardingState(
+            phase: OnboardingPhase.failed,
+            language: 'ru',
+            error: StateError('boom'),
+          ),
+        ),
+        initialState: OnboardingState(
+          phase: OnboardingPhase.failed,
+          language: 'ru',
+          error: StateError('boom'),
+        ),
+      );
+      await tester.pumpWidget(buildSubject());
+      expect(find.text('Installation failed'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      await tester.tap(find.text('Retry'));
+      verify(() => onboardingCubit.selectLanguage('ru')).called(1);
+      await tester.tap(find.text('Choose a different language'));
+      verify(() => onboardingCubit.resetToLanguageSelection()).called(1);
     });
   });
 
-  group('OnboardingPage Integration', () {
-    late PoetryRepository poetryRepository;
+  group('OnboardingPage', () {
+    late ResourceRepository resources;
+    late CorpusManifestClient manifestClient;
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
-      poetryRepository = MockPoetryRepository();
-    });
-
-    test('route returns correct route', () {
-      expect(OnboardingPage.route(), isA<MaterialPageRoute<void>>());
-    });
-
-    testWidgets('renders OnboardingView and instantiates cubit', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        RepositoryProvider.value(
-          value: poetryRepository,
-          child: const MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: OnboardingPage(),
-          ),
-        ),
+      resources = ResourceRepository(
+        modelDir: Directory.systemTemp.createTempSync('page-models'),
+        corpusDir: Directory.systemTemp.createTempSync('page-corpora'),
       );
-      expect(find.byType(OnboardingView), findsOneWidget);
+      manifestClient = CorpusManifestClient(
+        manifestUrl: Uri.parse('https://example.test/manifest.json'),
+      );
     });
 
-    testWidgets('completes onboarding when language selected', (tester) async {
-      // Mock getAuthors for HomePage which might be loaded on navigation
-      when(() => poetryRepository.getAuthors()).thenAnswer((_) async => []);
-
-      await tester.pumpWidget(
-        RepositoryProvider.value(
-          value: poetryRepository,
-          child: const MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: OnboardingPage(),
-          ),
-        ),
+    test('route builds a page with the provided dependencies', () {
+      final route = OnboardingPage.route(
+        resources: resources,
+        manifestClient: manifestClient,
       );
-
-      await tester.tap(find.text('English'));
-      await tester.pumpAndSettle();
-
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('onboarding_completed'), true);
-      expect(prefs.getString('selected_language'), 'en');
+      expect(route, isA<MaterialPageRoute<void>>());
     });
   });
 }

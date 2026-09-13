@@ -87,4 +87,73 @@ class PoetryRepository {
     final result = await query.getSingleOrNull();
     return result?.value;
   }
+  /// Finds recitation passages matching the recognized words.
+  ///
+  /// [termKeys] are normalized hypothesis keys. Each key becomes a quoted
+  /// FTS5 term joined with OR, so hostile input stays a literal search and
+  /// can never inject FTS syntax. Returns at most [limit] candidates
+  /// ordered by passage id. Empty input short-circuits to no candidates.
+  Future<List<RecitationCandidate>> findCandidatePassages(
+    List<String> termKeys, {
+    int limit = 5,
+  }) async {
+    final terms = termKeys
+        .where((term) => term.isNotEmpty)
+        .take(12)
+        .map((term) => '"${term.replaceAll('"', '""')}"')
+        .toList();
+    if (terms.isEmpty) return [];
+
+    const sql = '''
+      SELECT p.id AS passage_id, p.poem_id, p.start_token, p.end_token,
+        poems.title, poems.body
+      FROM passages_fts
+      JOIN poem_passages p ON p.id = passages_fts.rowid
+      JOIN poems ON poems.id = p.poem_id
+      WHERE passages_fts MATCH ?
+      LIMIT ?
+    ''';
+    final rows = await _db
+        .customSelect(
+          sql,
+          variables: [
+            Variable.withString(terms.join(' OR ')),
+            Variable.withInt(limit),
+          ],
+          readsFrom: {_db.poems, _db.poemPassages},
+        )
+        .get();
+    return [
+      for (final row in rows)
+        RecitationCandidate(
+          passageId: row.read<int>('passage_id'),
+          poemId: row.read<int>('poem_id'),
+          poemTitle: row.read<String>('title'),
+          poemBody: row.read<String>('body'),
+          startToken: row.read<int>('start_token'),
+          endToken: row.read<int>('end_token'),
+        ),
+    ];
+  }
 }
+
+/// One FTS passage hit: the poem it belongs to plus the token window the
+/// hypothesis matched. The cubit normalizes [poemBody] for detailed
+/// alignment; the window bounds select the expected tokens.
+class RecitationCandidate {
+  const RecitationCandidate({
+    required this.passageId,
+    required this.poemId,
+    required this.poemTitle,
+    required this.poemBody,
+    required this.startToken,
+    required this.endToken,
+  });
+
+  final int passageId;
+  final int poemId;
+  final String poemTitle;
+  final String poemBody;
+  final int startToken;
+  final int endToken;
+ }
