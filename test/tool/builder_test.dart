@@ -209,14 +209,19 @@ void main() {
         return http.Response('unavailable', 503);
       });
 
+      final waits = <Duration>[];
       await builder.downloadAndExtractCorpus(
         lang,
         'https://zenodo.org/records/17414036/files',
         tempDir,
-        waitForRetry: (_) async {},
+        waitForRetry: (delay) async => waits.add(delay),
       );
 
       expect(calls, 8);
+      expect(
+        waits.map((wait) => wait.inSeconds),
+        [30, 60, 90, 120, 150, 180, 210],
+      );
       expect(builder.extractedZips, isEmpty);
       expect(
         File(path.join(tempDir.path, 'en.zip')).existsSync(),
