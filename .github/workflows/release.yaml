@@ -149,4 +149,12 @@ jobs:
       - name: 📤 Publish data release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dart run tool/publish_data.dart
+        run: |
+          set +e
+          dart run tool/publish_data.dart > /tmp/publish.log 2>&1
+          code=$?
+          tail -n 25 /tmp/publish.log
+          if [ $code -ne 0 ]; then
+            echo "::error::publish failed: $(tail -n 4 /tmp/publish.log | tr '\n' '|')"
+            exit $code
+          fi
