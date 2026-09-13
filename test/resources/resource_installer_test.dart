@@ -339,9 +339,10 @@ void main() {
     await repository.installSpeechModel(model);
     expect(await repository.isSpeechModelInstalled(model), isTrue);
     expect(
-      const ResourceState(id: 'x', phase: ResourcePhase.downloading)
-          .copyWith(receivedBytes: 3)
-          .phase,
+      const ResourceState(
+        id: 'x',
+        phase: ResourcePhase.downloading,
+      ).copyWith(receivedBytes: 3).phase,
       ResourcePhase.downloading,
     );
   });

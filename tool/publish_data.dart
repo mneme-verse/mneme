@@ -195,11 +195,11 @@ class DataPublisher {
       try {
         final published =
             json.decode(
-              await File(
-                path.join(scratch.path, 'manifest.json'),
-              ).readAsString(),
-            )
-            as Map<String, dynamic>;
+                  await File(
+                    path.join(scratch.path, 'manifest.json'),
+                  ).readAsString(),
+                )
+                as Map<String, dynamic>;
         merged = mergeManifests(published, local);
         print(
           'ℹ️  Merged ${local.length} local entries over '
