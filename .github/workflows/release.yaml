@@ -94,10 +94,16 @@ jobs:
           ANDROID_KEYSTORE_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASS }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ env.KEY_KEY_PASS }}
-        run: >
-          flutter build apk --release --flavor production
-          -t lib/main_production.dart --target-platform android-arm64
-
+        run: |
+          set +e
+          flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 > /tmp/apk.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "::error::apk build failed: $(grep -e 'FAILURE' -e 'error:' -e 'Exception' -e 'FAILED' /tmp/apk.log | head -n 5 | tr '\n' '|')"
+            tail -n 40 /tmp/apk.log
+            exit $code
+          fi
+          ls -la build/app/outputs/flutter-apk/
       - name: 🚀 Publish to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
