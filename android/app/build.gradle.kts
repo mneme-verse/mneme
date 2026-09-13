@@ -40,12 +40,15 @@ android {
 
     signingConfigs {
         create("release") {
-            if (System.getenv("ANDROID_KEYSTORE_PATH") != null) {
-                storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+            // Missing secrets arrive as empty strings, not null: treat
+            // blank as absent so unsigned local builds keep working.
+            val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
                 keyAlias = System.getenv("ANDROID_KEYSTORE_ALIAS")
                 keyPassword = System.getenv("ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD")
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                
+
             } else {
                 keyAlias = keystoreProperties["keyAlias"] as String?
                 keyPassword = keystoreProperties["keyPassword"] as String?
