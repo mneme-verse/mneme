@@ -363,6 +363,57 @@ void main() {
     expect(requests, 1);
   });
 
+  test('conflicting bytes wait out the in-flight install', () async {
+    final other = Uint8List.fromList(
+      List<int>.generate(128, (i) => 255 - (i % 251)),
+    );
+    handler = (request) async {
+      requests++;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final url = request.url.toString();
+      return _bytesResponse(url.contains('v2') ? other : payload);
+    };
+    const id = 'contended.bin';
+    final first = repository.installCorpusPack(
+      id,
+      packUrl('contended.bin'),
+      shaOf(payload),
+      sizeBytes: payload.length,
+    );
+    final second = repository.installCorpusPack(
+      id,
+      packUrl('contended.bin?v2'),
+      shaOf(other),
+      sizeBytes: other.length,
+    );
+    await Future.wait([first, second]);
+
+    // Both downloads ran exactly once; the second install replaced the
+    // first one's bytes (both handles address the same destination).
+    expect(requests, 2);
+    expect(File('${tempDir.path}/corpora/$id').readAsBytesSync(), other);
+  });
+
+  test('failed conflicts do not block a retry with other bytes', () async {
+    const id = 'flaky.bin';
+    final first = repository.installCorpusPack(
+      id,
+      packUrl('flaky.bin'),
+      '0' * 64,
+      sizeBytes: payload.length,
+    );
+    final second = repository.installCorpusPack(
+      id,
+      packUrl('flaky.bin'),
+      shaOf(payload),
+      sizeBytes: payload.length,
+    );
+    await expectLater(first, throwsA(isA<HashMismatchException>()));
+    final installed = await second;
+    expect(installed.readAsBytesSync(), payload);
+    expect(requests, 2);
+  });
+
   test('cancel from the final progress callback still wins', () async {
     final dir = Directory('${tempDir.path}/late')..createSync();
     final installer = ResourceInstaller(

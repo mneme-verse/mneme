@@ -134,20 +134,9 @@ class StudyRepository {
       reviewDateTime: at,
       reviewDuration: reviewDuration,
     );
-    await (_db.update(
-      _db.studyCards,
-    )..where((row) => row.id.equals(card.cardId))).write(
-      StudyCardsCompanion(
-        state: Value(result.card.state.value),
-        step: Value(result.card.step),
-        stability: Value(result.card.stability),
-        difficulty: Value(result.card.difficulty),
-        dueMillis: Value(result.card.due.millisecondsSinceEpoch),
-        lastReviewMillis: Value(
-          result.card.lastReview?.millisecondsSinceEpoch,
-        ),
-      ),
-    );
+    // The log insert claims the slot first: on a lost race nothing has
+    // been rescheduled yet, so returning the winner leaves no stale
+    // loser state behind.
     try {
       await _db
           .into(_db.studyReviewLogs)
@@ -170,9 +159,28 @@ class StudyRepository {
                     log.reviewMillis.equals(at.millisecondsSinceEpoch),
               ))
               .getSingleOrNull();
-      if (winner != null) return (card: card, log: _toLog(winner));
-      rethrow;
+      if (winner == null) rethrow;
+      final fresh =
+          await (_db.select(_db.studyCards)..where(
+                (row) => row.id.equals(card.cardId),
+              ))
+              .getSingle();
+      return (card: _toCard(fresh), log: _toLog(winner));
     }
+    await (_db.update(
+      _db.studyCards,
+    )..where((row) => row.id.equals(card.cardId))).write(
+      StudyCardsCompanion(
+        state: Value(result.card.state.value),
+        step: Value(result.card.step),
+        stability: Value(result.card.stability),
+        difficulty: Value(result.card.difficulty),
+        dueMillis: Value(result.card.due.millisecondsSinceEpoch),
+        lastReviewMillis: Value(
+          result.card.lastReview?.millisecondsSinceEpoch,
+        ),
+      ),
+    );
     return (card: result.card, log: result.reviewLog);
   }
 

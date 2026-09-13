@@ -156,9 +156,17 @@ void main() {
         final prefs = await SharedPreferences.getInstance();
         expect(prefs.getString('selected_language'), 'ru');
         expect(prefs.getBool('onboarding_completed'), true);
+        expect(prefs.getString('installed_corpus_version'), '1.0+2');
+        expect(
+          prefs.getString('installed_model_id'),
+          fakeSpeechModel.id,
+        );
+        expect(
+          prefs.getString('installed_model_sha256'),
+          fakeSpeechModel.sha256,
+        );
       },
     );
-
     blocTest<OnboardingCubit, OnboardingState>(
       'manifest fetch failure emits failed state with the error',
       build: () => buildCubit(fakeClient(manifestStatus: 500)),

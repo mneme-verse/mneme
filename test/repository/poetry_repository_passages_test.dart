@@ -61,5 +61,17 @@ void main() {
 
       expect(candidates.length, lessThanOrEqualTo(1));
     });
+
+    test('queries the tail of long transcripts', () async {
+      final filler = List.filled(12, 'xyzzy');
+      final candidates = await repository.findCandidatePassages(
+        [...filler, 'midnight', 'dreary'],
+      );
+
+      expect(
+        candidates.map((candidate) => candidate.poemId),
+        contains(1),
+      );
+    });
   });
 }

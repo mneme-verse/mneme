@@ -121,6 +121,11 @@ jobs:
   corpus-data:
     if: inputs.corpus_language != ''
     runs-on: ubuntu-latest
+    # Read-modify-upload on one shared manifest: concurrent language
+    # publishes would clobber each other, so dispatches queue here.
+    concurrency:
+      group: corpus-data-publish
+      cancel-in-progress: false
     steps:
       - name: 📚 Git Checkout
         uses: actions/checkout@v7

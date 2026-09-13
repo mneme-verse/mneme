@@ -37,9 +37,15 @@ void main() {
     testWidgets('opens the stored language database on relaunch', (
       tester,
     ) async {
+      final model = lockedSpeechModels.firstWhere(
+        (m) => m.id == defaultSpeechModelId,
+      );
       SharedPreferences.setMockInitialValues({
         'onboarding_completed': true,
         'selected_language': 'en',
+        'installed_corpus_version': corpusDataVersion,
+        'installed_model_id': model.id,
+        'installed_model_sha256': model.sha256,
       });
       final harness = _AppHarness()..installGateFiles(language: 'en');
 
@@ -70,6 +76,28 @@ void main() {
       );
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('onboarding_completed'), isFalse);
+    });
+
+    testWidgets('returns to onboarding after a corpus bump', (
+      tester,
+    ) async {
+      final model = lockedSpeechModels.firstWhere(
+        (m) => m.id == defaultSpeechModelId,
+      );
+      SharedPreferences.setMockInitialValues({
+        'onboarding_completed': true,
+        'selected_language': 'en',
+        'installed_corpus_version': '0.0+0',
+        'installed_model_id': model.id,
+        'installed_model_sha256': model.sha256,
+      });
+      final harness = _AppHarness()..installGateFiles(language: 'en');
+
+      await tester.pumpWidget(harness.build());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select Language'), findsOneWidget);
+      expect(harness.openedLanguages, isEmpty);
     });
 
     testWidgets('installs resources and opens the database on completion', (

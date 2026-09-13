@@ -179,6 +179,26 @@ void main() {
       expect(upload, contains('assets/database/en.db.zst'));
     });
 
+    test('aborts instead of clobbering on merge failure', () async {
+      final publisher = DataPublisher(
+        dbOutputDir: 'assets/database',
+        processRunner: (executable, args, {runInShell = false}) {
+          commandLog.add('$executable ${args.join(" ")}');
+          // Release exists; download fails.
+          return Future.value(
+            ProcessResult(0, args.contains('view') ? 0 : 1, '', 'gone'),
+          );
+        },
+        fs: mockFs,
+      );
+      await expectLater(publisher.publish(), throwsException);
+      expect(
+        commandLog.any((entry) => entry.contains('upload')),
+        isFalse,
+        reason: 'no upload may run when the merge cannot be read',
+      );
+    });
+
     test('mergeManifests keeps other languages and lets local win', () {
       final merged = mergeManifests(
         {

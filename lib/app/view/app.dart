@@ -70,16 +70,22 @@ class _AppState extends State<App> {
     final language = prefs.getString('selected_language');
     if (!mounted) return;
 
-    // Preferences alone do not prove the resources survived: a removed
-    // pack or model sends the user back through onboarding, which
-    // reinstalls them. The install verified the hashes; presence is a
-    // sufficient launch gate.
-    final modelId = widget.speechModel?.id ?? defaultSpeechModelId;
+    // Preferences alone do not prove the resources survived, and versions
+    // move on: a removed pack/model or a corpus bump/model change sends
+    // the user back through onboarding, which reinstalls. Install verified
+    // the hashes; presence plus matching versions is a sufficient offline
+    // launch gate.
+    final model =
+        widget.speechModel ??
+        lockedSpeechModels.firstWhere((m) => m.id == defaultSpeechModelId);
     final intact =
         completed &&
         language != null &&
-        widget.resources.isModelPresent(modelId) &&
-        widget.resources.isCorpusPackPresent('$language.db.zst');
+        widget.resources.isModelPresent(model.id) &&
+        widget.resources.isCorpusPackPresent('$language.db.zst') &&
+        prefs.getString('installed_corpus_version') == corpusDataVersion &&
+        prefs.getString('installed_model_id') == model.id &&
+        prefs.getString('installed_model_sha256') == model.sha256;
     if (!intact) {
       await prefs.setBool('onboarding_completed', false);
       if (!mounted) return;

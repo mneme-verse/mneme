@@ -72,10 +72,6 @@ QueryExecutor openCorpusConnection({
   });
 }
 
-/// Deletes [file] when its `user_version` is below [corpusSchemaVersion].
-///
-/// Exposed for tests; production calls it from [openCorpusConnection]
-/// before drift opens the file.
 Future<void> invalidateStaleCorpusSchema(File file) async {
   if (!file.existsSync()) return;
   final probe = sqlite3.open(file.path);
@@ -85,7 +81,10 @@ Future<void> invalidateStaleCorpusSchema(File file) async {
   } finally {
     probe.dispose();
   }
-  if (version != corpusSchemaVersion) {
+  // Only older schemas are stale. Newer files are left alone so drift
+  // can report them as unsupported instead of destroying a future
+  // corpus on downgrade.
+  if (version < corpusSchemaVersion) {
     await file.delete();
     debugPrint(
       'Removed stale corpus database below schema v$corpusSchemaVersion.',

@@ -410,17 +410,17 @@ class PoeTreeBuilder {
       final dbPath = path.join(dbDir.path, '$langCode.db');
       final dbFile = File(dbPath);
 
-      // Reuse an existing database only when it already carries the
-      // current schema; otherwise a stale file would be published with a
-      // fresh manifest. The app applies the same rule on open.
+      // Reuse an existing database only when it carries the current
+      // build marker: user_version alone cannot prove the build finished
+      // (triggers, poems, passages, FTS rows, metadata). The app applies
+      // the same freshness rule on open.
       if (dbFile.existsSync() && !cleanTargets.contains('db')) {
-        if (_dbSchemaVersion(dbFile) == corpusSchemaVersion) {
+        if (readCorpusBuildMarker(dbFile) == corpusDataVersion) {
           print('  ⏭️  Skipping $langCode (database already exists)');
           continue;
         }
         print(
-          '  ♻️  Rebuilding $langCode (stale schema, '
-          'expected v$corpusSchemaVersion)',
+          '  ♻️  Rebuilding $langCode (missing or stale build marker)',
         );
       }
 
@@ -621,6 +621,16 @@ class PoeTreeBuilder {
               value: 'CC BY-SA 4.0 / PoeTree',
             ),
           );
+      // Completion marker: reuse checks require it, so an interrupted
+      // build below this point is rebuilt instead of published partial.
+      await db
+          .into(db.metadata)
+          .insert(
+            MetadataCompanion.insert(
+              key: 'builder_complete',
+              value: corpusDataVersion,
+            ),
+          );
 
       await db.close();
       print('     ✓ $langPoems poems from $langCode');
@@ -632,13 +642,21 @@ class PoeTreeBuilder {
     print('     • Files processed: $processedFiles');
   }
 
-  /// Reads the SQLite `user_version` pragma without opening drift.
-  static int _dbSchemaVersion(File dbFile) {
+  /// Reads the builder completion marker without opening drift.
+  ///
+  /// Returns null for missing files, missing tables, or builds that never
+  /// finished: only a completed build of [corpusDataVersion] is reusable.
+  static String? readCorpusBuildMarker(File dbFile) {
+    if (!dbFile.existsSync()) return null;
     final probe = sqlite3.open(dbFile.path);
     try {
-      return probe.select('PRAGMA user_version').single['user_version'] as int;
-    } finally {
-      probe.dispose();
+      final rows = probe.select(
+        "SELECT value FROM metadata WHERE key = 'builder_complete'",
+      );
+      if (rows.isEmpty) return null;
+      return rows.single['value'] as String?;
+    } catch (_) {
+      return null;
     }
   }
 

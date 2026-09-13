@@ -122,6 +122,17 @@ void main() {
     expect(await readTitles('en'), ['Kept poem']);
   });
 
+  test('future schema files are left for drift to report', () async {
+    final file = File(p.join(docsDir.path, 'en.db'));
+    sqlite3.open(file.path)
+      ..execute('PRAGMA user_version = 99;')
+      ..dispose();
+
+    await invalidateStaleCorpusSchema(file);
+
+    expect(file.existsSync(), isTrue);
+  });
+
   test('v1 databases are rebuilt on open', () async {
     final file = File(p.join(docsDir.path, 'en.db'));
     sqlite3.open(file.path)

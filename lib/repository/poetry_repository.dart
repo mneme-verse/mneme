@@ -92,20 +92,28 @@ class PoetryRepository {
   ///
   /// [termKeys] are normalized hypothesis keys. Each key becomes a quoted
   /// FTS5 term joined with OR, so hostile input stays a literal search and
-  /// can never inject FTS syntax. Most relevant passages come first
-  /// (`rank`), then passage id, so common words cannot starve a later
-  /// poem past the [limit]. Empty input short-circuits to no candidates.
+  /// can never inject FTS syntax. At most 12 terms are queried: the first
+  /// 4 anchor the passage start and the last 8 cover the live recitation
+  /// edge, so long cumulative transcripts keep retrieving where the
+  /// learner currently is. Most relevant passages come first (`rank`),
+  /// then passage id, so common words cannot starve a later poem past
+  /// the [limit]. Empty input short-circuits to no candidates.
   Future<List<RecitationCandidate>> findCandidatePassages(
     List<String> termKeys, {
     int limit = 5,
   }) async {
-    final terms = termKeys
-        .where((term) => term.isNotEmpty)
-        .take(12)
+    final keys = termKeys.where((term) => term.isNotEmpty).toList();
+    // First 4 anchor the passage start, last 8 the live recitation edge.
+    // Short inputs keep every term through deduplication below.
+    final tailStart = keys.length - 8 < 4 ? 4 : keys.length - 8;
+    final selected = {
+      ...keys.take(4),
+      if (keys.length > 4) ...keys.sublist(tailStart),
+    };
+    final terms = selected
         .map((term) => '"${term.replaceAll('"', '""')}"')
         .toList();
     if (terms.isEmpty) return [];
-
     const sql = '''
       SELECT p.id AS passage_id, p.poem_id, p.start_token, p.end_token,
         poems.title, poems.body

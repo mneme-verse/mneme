@@ -146,24 +146,39 @@ class ResourceRepository {
   void cancel(String id) => _cancelTokens[id]?.cancel();
 
   /// Installs started through [_install], keyed by resource id. Concurrent
-  /// calls for the same id share one download instead of truncating each
-  /// other's partial file or stealing each other's cancel token.
-  final _ongoing = <String, Future<File>>{};
+  /// calls for the same id and bytes share one download instead of
+  /// truncating each other's partial file or stealing each other's
+  /// cancel token. A different descriptor waits out the current install
+  /// and then installs its own bytes.
+  final _ongoing = <String, _OngoingInstall>{};
 
   Future<File> _install(
     LockedResource resource,
     ResourceInstaller installer,
   ) async {
-    final ongoing = _ongoing[resource.id];
-    if (ongoing != null) return ongoing;
+    while (true) {
+      final ongoing = _ongoing[resource.id];
+      if (ongoing == null) break;
+      if (_sameBytes(ongoing.resource, resource)) {
+        return ongoing.future;
+      }
+      try {
+        await ongoing.future;
+      } on Exception catch (_) {
+        // The conflicting install failed; fall through and try ours.
+      }
+    }
     late final Future<File> future;
     future = _runInstall(resource, installer).whenComplete(() {
-      if (identical(_ongoing[resource.id], future)) {
-        // ignore: discarded_futures -- Map.remove returns the entry.
+      final current = _ongoing[resource.id];
+      if (current != null && identical(current.future, future)) {
         _ongoing.remove(resource.id);
       }
     });
-    _ongoing[resource.id] = future;
+    _ongoing[resource.id] = _OngoingInstall(
+      resource: resource,
+      future: future,
+    );
     return future;
   }
 
@@ -248,3 +263,15 @@ class ResourceRepository {
     await _statesController.close();
   }
 }
+
+/// An install started for one resource descriptor.
+class _OngoingInstall {
+  const _OngoingInstall({required this.resource, required this.future});
+
+  final LockedResource resource;
+  final Future<File> future;
+}
+
+/// True when both descriptors would install byte-identical content.
+bool _sameBytes(LockedResource a, LockedResource b) =>
+    a.url == b.url && a.sha256 == b.sha256 && a.sizeBytes == b.sizeBytes;

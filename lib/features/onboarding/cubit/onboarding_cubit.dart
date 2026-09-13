@@ -162,6 +162,11 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
       final prefs = await _resolvePrefs();
       await prefs.setString('selected_language', language);
+      // Installed versions, checked on relaunch without network: a corpus
+      // bump or model change sends the user back through onboarding.
+      await prefs.setString('installed_corpus_version', pack.version);
+      await prefs.setString('installed_model_id', model.id);
+      await prefs.setString('installed_model_sha256', model.sha256);
       await prefs.setBool('onboarding_completed', true);
 
       emit(state.copyWith(phase: OnboardingPhase.completed));

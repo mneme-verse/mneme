@@ -172,9 +172,11 @@ class DataPublisher {
     }
   }
 
-  /// Downloads the published manifest for [tagName] (when any), overlays
-  /// the local entries, and writes the union to [scratch]. Falls back to
-  /// the local manifest when nothing is published yet.
+  /// Downloads the published manifest for [tagName], overlays the local
+  /// entries, and writes the union to [scratch]. Only called when the
+  /// release already exists: any download or parse failure aborts the
+  /// publish, because uploading the local manifest alone would delete
+  /// other languages from the release.
   Future<String> _mergedManifestPath(
     String tagName,
     Map<String, dynamic> local,
@@ -190,27 +192,40 @@ class DataPublisher {
       scratch.path,
       '--clobber',
     ]);
-    var merged = mergeManifests(const {}, local);
-    if (download.exitCode == 0) {
-      try {
-        final published =
-            json.decode(
-                  await File(
-                    path.join(scratch.path, 'manifest.json'),
-                  ).readAsString(),
-                )
-                as Map<String, dynamic>;
-        merged = mergeManifests(published, local);
-        print(
-          'ℹ️  Merged ${local.length} local entries over '
-          '${published.length} published.',
-        );
-      } on Exception catch (_) {
-        print('ℹ️  Published manifest unreadable; uploading the local one.');
-      }
-    } else {
-      print('ℹ️  No published manifest yet; uploading the local one.');
+    if (download.exitCode != 0) {
+      throw Exception(
+        'Could not download the published manifest for $tagName; '
+        'aborting instead of clobbering other languages.',
+      );
     }
+    final published = await _readPublishedManifest(scratch);
+    final merged = mergeManifests(published, local);
+    print(
+      'ℹ️  Merged ${local.length} local entries over '
+      '${published.length} published.',
+    );
+    return _writeMerged(merged, scratch);
+  }
+
+  /// Reads the downloaded manifest, throwing when it is missing,
+  /// malformed, or not a JSON object. Callers must abort, never fall
+  /// back, so a transient failure cannot clobber other languages.
+  Future<Map<String, dynamic>> _readPublishedManifest(
+    Directory scratch,
+  ) async {
+    final decoded = json.decode(
+      await File(path.join(scratch.path, 'manifest.json')).readAsString(),
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Published manifest is not a JSON object.');
+    }
+    return decoded;
+  }
+
+  Future<String> _writeMerged(
+    Map<String, dynamic> merged,
+    Directory scratch,
+  ) async {
     final out = path.join(scratch.path, 'manifest.json');
     await File(out).writeAsString('${json.encode(merged)}\n');
     return out;
