@@ -198,11 +198,15 @@ class DataPublisher {
       scratch.path,
       '--clobber',
     ]);
-    if (download.exitCode != 0) {
+    if (download.exitCode != 0 && await _hasPublishedManifest(tagName)) {
       throw Exception(
         'Could not download the published manifest for $tagName; '
         'aborting instead of clobbering other languages.',
       );
+    }
+    if (download.exitCode != 0) {
+      print('ℹ️  Release has no manifest yet; uploading the local one.');
+      return _writeMerged(local, scratch);
     }
     final published = await _readPublishedManifest(scratch);
     final merged = mergeManifests(published, local);
@@ -213,7 +217,22 @@ class DataPublisher {
     return _writeMerged(merged, scratch);
   }
 
-  /// Reads the downloaded manifest, throwing when it is missing,
+  /// True when the release already publishes a manifest asset. A failed
+  /// download with no published manifest is a fresh release, safe to
+  /// seed; otherwise the publish must abort instead of clobbering.
+  Future<bool> _hasPublishedManifest(String tagName) async {
+    final view = await _processRunner('gh', [
+      'release',
+      'view',
+      tagName,
+      '--json',
+      'assets',
+      '--jq',
+      '.assets[].name',
+    ]);
+    if (view.exitCode != 0) return false;
+    return (view.stdout as String).split('\n').contains('manifest.json');
+  }
   /// malformed, or not a JSON object. Callers must abort, never fall
   /// back, so a transient failure cannot clobber other languages.
   Future<Map<String, dynamic>> _readPublishedManifest(

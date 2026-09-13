@@ -200,7 +200,13 @@ void main() {
         dbOutputDir: 'assets/database',
         processRunner: (executable, args, {runInShell = false}) {
           commandLog.add('$executable ${args.join(" ")}');
-          // Release exists; download fails.
+          if (args.contains('--json')) {
+            // The release already publishes a manifest...
+            return Future.value(
+              ProcessResult(0, 0, 'manifest.json\nen.db.zst', ''),
+            );
+          }
+          // ...but its download fails transiently.
           return Future.value(
             ProcessResult(0, args.contains('view') ? 0 : 1, '', 'gone'),
           );
