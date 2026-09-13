@@ -1,6 +1,6 @@
-# TEMPORARY diagnostic: surfaces flutter test output through the job
-# summary (readable via the checks API) because Actions log downloads are
-# unavailable from this environment. DELETE BEFORE MERGE.
+# TEMPORARY diagnostic: runs the suite the way CI does, failing loudly,
+# because Actions log downloads are unavailable from this environment.
+# DELETE BEFORE MERGE.
 name: diagnose-tests
 
 on:
@@ -25,43 +25,9 @@ jobs:
       - name: 📦 Install Dependencies
         run: flutter pub get
 
-      - name: 🔍 Environment diagnostics
-        run: |
-          echo "ZSTD setup test:"
-          find ~/.pub-cache -name 'eszstd-linux64.so' -print -quit
-          ls /usr/lib/x86_64-linux-gnu/libsqlite3* 2>/dev/null || echo "no system sqlite dev symlink"
-          ldconfig -p | grep -e 'libsqlite3\.so[^.]' || echo "no libsqlite3.so in ldconfig"
-
-      - name: 🧪 Run tests with visible output
+      - name: 🧪 Run tests exactly like CI
         run: |
           export ZSTD_LIBRARY_PATH="$(dirname "$(find ~/.pub-cache -name 'eszstd-linux64.so' -print -quit)")"
           echo "ZSTD_LIBRARY_PATH=$ZSTD_LIBRARY_PATH"
-          flutter test --coverage > /tmp/test-output.txt 2>&1
-          echo "EXIT_CODE=$?"
-          tail -n 40 /tmp/test-output.txt
-        continue-on-error: true
-
-      - name: 📊 Coverage summary
-        run: |
-          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          cur = None; th = tf = 0; miss = []
-          try:
-              lines = open('coverage/lcov.info')
-          except OSError:
-              print('no lcov.info produced');
-              raise SystemExit
-          for line in lines:
-              line = line.strip()
-              if line.startswith('SF:'): cur = line[3:]
-              elif line.startswith('DA:'):
-                  n, h = line[3:].split(',')[:2]; tf += 1
-                  if int(h) > 0: th += 1
-                  else: miss.append(f'{cur}:{n}')
-          print(f'total: {th}/{tf} = {100*th/tf:.1f}%')
-          print('miss:', miss[:30])
-          EOF
-          {
-            echo '```';
-            tail -n 60 /tmp/test-output.txt;
-            echo '```';
-          } >> "$GITHUB_STEP_SUMMARY"
+          test -n "$ZSTD_LIBRARY_PATH" || { echo 'BLOB NOT FOUND' >&2; exit 10; }
+          flutter test --coverage --test-randomize-ordering-seed random
