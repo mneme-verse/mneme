@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +10,7 @@ import 'package:mneme/db/connection/study_connection.dart';
 import 'package:mneme/db/study_database.dart';
 import 'package:mneme/repository/study_repository.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -208,4 +211,273 @@ void main() {
 
     expect(cards.map((entry) => entry.cardId), contains(card.cardId));
   });
+  test('concurrent identical submissions keep a single outcome', () async {
+    final docs = Directory.systemTemp.createTempSync('mneme-study-race');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    final at = DateTime.utc(2026, 9, 13, 12);
+    Future<({fsrs.Card card, fsrs.ReviewLog log})> submit() {
+      final connection = StudyDatabase(openStudyConnection(documentsDir: docs));
+      final repository = StudyRepository(
+        connection,
+        scheduler: fsrs.Scheduler(enableFuzzing: false),
+      );
+      return repository
+          .submitReview(
+            poemKey: 'raven',
+            rating: fsrs.Rating.good,
+            reviewDateTime: at,
+          )
+          .whenComplete(connection.close);
+    }
+
+    final outcomes = await Future.wait(List.generate(64, (_) => submit()));
+
+    final first = outcomes.first;
+    for (final outcome in outcomes.skip(1)) {
+      expect(outcome.card.cardId, first.card.cardId);
+      expect(
+        outcome.log.reviewDateTime,
+        first.log.reviewDateTime,
+      );
+    }
+    final check = StudyDatabase(openStudyConnection(documentsDir: docs));
+    addTearDown(check.close);
+    final history = await StudyRepository(
+      check,
+      scheduler: fsrs.Scheduler(enableFuzzing: false),
+    ).reviewHistory('raven');
+    expect(history, hasLength(1));
+  });
+
+  test('busy snapshot backs off and retries once', () async {
+    final docs = Directory.systemTemp.createTempSync('mneme-study-busy');
+    addTearDown(() => docs.deleteSync(recursive: true));
+    final db = StudyDatabase(openStudyConnection(documentsDir: docs));
+    addTearDown(db.close);
+    await db.customSelect('SELECT 1').get();
+    final repository = StudyRepository(
+      db,
+      scheduler: fsrs.Scheduler(enableFuzzing: false),
+    );
+
+    final locker = sqlite3.open(p.join(docs.path, 'study.db'));
+    addTearDown(locker.dispose);
+    locker.execute('BEGIN IMMEDIATE');
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 20)).then((_) {
+        locker.execute('ROLLBACK');
+      }),
+    );
+
+    final at = DateTime.utc(2026, 9, 13, 12);
+    final result = await repository.submitReview(
+      poemKey: 'raven',
+      rating: fsrs.Rating.good,
+      reviewDateTime: at,
+    );
+    expect(result.log.rating, fsrs.Rating.good);
+    expect(result.log.reviewDateTime, at);
+  });
+
+  group('conflict recovery', () {
+    late Directory docs;
+    late StudyDatabase seedDb;
+
+    setUp(() async {
+      docs = Directory.systemTemp.createTempSync('mneme-study-conflict');
+      seedDb = StudyDatabase(openStudyConnection(documentsDir: docs));
+      addTearDown(seedDb.close);
+      addTearDown(() => docs.deleteSync(recursive: true));
+    });
+
+    Future<StudyDatabase> lyingDb({required String table}) async {
+      final state = _RaceState()..table = table;
+      final executor = _RaceExecutor(
+        NativeDatabase(File(p.join(docs.path, 'study.db'))),
+        state,
+      );
+      final database = StudyDatabase(executor);
+      addTearDown(database.close);
+      return database;
+    }
+
+    test('lost log race returns the stored outcome', () async {
+      final at = DateTime.utc(2026, 9, 13, 12);
+      final seeder = StudyRepository(
+        seedDb,
+        scheduler: fsrs.Scheduler(enableFuzzing: false),
+      );
+      final stored = await seeder.submitReview(
+        poemKey: 'raven',
+        rating: fsrs.Rating.hard,
+        reviewDateTime: at,
+      );
+
+      final repository = StudyRepository(
+        await lyingDb(table: 'study_review_logs'),
+        scheduler: fsrs.Scheduler(enableFuzzing: false),
+      );
+      final retry = await repository.submitReview(
+        poemKey: 'raven',
+        rating: fsrs.Rating.good,
+        reviewDateTime: at,
+      );
+
+      expect(retry.card.cardId, stored.card.cardId);
+      expect(retry.log.rating, fsrs.Rating.hard);
+      expect(retry.log.reviewDateTime, at);
+    });
+
+    test('lost card race reuses the stored card', () async {
+      final seeder = StudyRepository(
+        seedDb,
+        scheduler: fsrs.Scheduler(enableFuzzing: false),
+      );
+      final stored = await seeder.getOrCreateCard('raven');
+
+      final repository = StudyRepository(
+        await lyingDb(table: 'study_cards'),
+        scheduler: fsrs.Scheduler(enableFuzzing: false),
+      );
+      final card = await repository.getOrCreateCard('raven');
+
+      expect(card.cardId, stored.cardId);
+    });
+  });
+}
+
+/// Simulates a lost race deterministically: the next `runSelect` — even
+/// inside a transaction — returns no rows, so a pre-check misses a row
+/// that a concurrent writer committed. The following insert then hits its
+/// UNIQUE constraint and the repository must recover the stored outcome.
+class _RaceState {
+  bool lieArmed = true;
+
+  /// Only lie for statements touching [table]; other selects pass through
+  /// so each test arms exactly the pre-check it wants to lose.
+  String? table;
+}
+
+class _RaceExecutor implements QueryExecutor {
+  _RaceExecutor(this._inner, this._state);
+
+  final QueryExecutor _inner;
+  final _RaceState _state;
+
+  List<Map<String, Object?>>? _lie(String statement) {
+    if (!_state.lieArmed) return null;
+    if (_state.table != null && !statement.contains(_state.table!)) {
+      return null;
+    }
+    _state.lieArmed = false;
+    return const [];
+  }
+
+  @override
+  SqlDialect get dialect => _inner.dialect;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _inner.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) async => _lie(statement) ?? _inner.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) =>
+      _inner.runInsert(statement, args);
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _inner.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _inner.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _inner.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _inner.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() =>
+      _RaceTransaction(_inner.beginTransaction(), _state);
+
+  @override
+  QueryExecutor beginExclusive() => _inner.beginExclusive();
+
+  @override
+  Future<void> close() => _inner.close();
+}
+
+class _RaceTransaction implements TransactionExecutor {
+  _RaceTransaction(this._inner, this._state);
+
+  final TransactionExecutor _inner;
+  final _RaceState _state;
+
+  List<Map<String, Object?>>? _lie(String statement) {
+    if (!_state.lieArmed) return null;
+    if (_state.table != null && !statement.contains(_state.table!)) {
+      return null;
+    }
+    _state.lieArmed = false;
+    return const [];
+  }
+
+  @override
+  SqlDialect get dialect => _inner.dialect;
+
+  @override
+  bool get supportsNestedTransactions => _inner.supportsNestedTransactions;
+
+  @override
+  Future<bool> ensureOpen(QueryExecutorUser user) => _inner.ensureOpen(user);
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    String statement,
+    List<Object?> args,
+  ) async => _lie(statement) ?? _inner.runSelect(statement, args);
+
+  @override
+  Future<int> runInsert(String statement, List<Object?> args) =>
+      _inner.runInsert(statement, args);
+
+  @override
+  Future<int> runUpdate(String statement, List<Object?> args) =>
+      _inner.runUpdate(statement, args);
+
+  @override
+  Future<int> runDelete(String statement, List<Object?> args) =>
+      _inner.runDelete(statement, args);
+
+  @override
+  Future<void> runCustom(String statement, [List<Object?>? args]) =>
+      _inner.runCustom(statement, args);
+
+  @override
+  Future<void> runBatched(BatchedStatements statements) =>
+      _inner.runBatched(statements);
+
+  @override
+  TransactionExecutor beginTransaction() => this;
+
+  @override
+  QueryExecutor beginExclusive() => this;
+
+  @override
+  Future<void> send() => _inner.send();
+
+  @override
+  Future<void> rollback() => _inner.rollback();
+
+  @override
+  Future<void> close() => _inner.close();
 }

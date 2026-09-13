@@ -15,6 +15,7 @@ import 'package:mneme/db/database.dart';
 import 'package:mneme/recitation/normalized_text.dart';
 import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:path/path.dart' as path;
+import 'package:sqlite3/sqlite3.dart';
 
 const _availableCorpora = ['cs', 'de', 'en', 'hu', 'no', 'pt', 'ru', 'sl'];
 const _filesPerHarvestIsolate = 500;
@@ -409,10 +410,18 @@ class PoeTreeBuilder {
       final dbPath = path.join(dbDir.path, '$langCode.db');
       final dbFile = File(dbPath);
 
-      // Check if database already exists and we're not cleaning
+      // Reuse an existing database only when it already carries the
+      // current schema; otherwise a stale file would be published with a
+      // fresh manifest. The app applies the same rule on open.
       if (dbFile.existsSync() && !cleanTargets.contains('db')) {
-        print('  ⏭️  Skipping $langCode (database already exists)');
-        continue;
+        if (_dbSchemaVersion(dbFile) == corpusSchemaVersion) {
+          print('  ⏭️  Skipping $langCode (database already exists)');
+          continue;
+        }
+        print(
+          '  ♻️  Rebuilding $langCode (stale schema, '
+          'expected v$corpusSchemaVersion)',
+        );
       }
 
       // Delete existing database for this language if cleaning
@@ -455,7 +464,9 @@ class PoeTreeBuilder {
       final authorIdToCount = <int, int>{};
       var nextAuthorId = 1;
       var nextPoemId = 1;
-
+      // poemKeys already inserted for this language: exact duplicates
+      // share a key and would violate its UNIQUE constraint.
+      final seenPoemKeys = <String>{};
       // Batch queues
       final poemsBatch = <Map<String, dynamic>>[];
       final poemAuthorsBatch = <Map<String, dynamic>>[];
@@ -497,6 +508,10 @@ class PoeTreeBuilder {
             // Process the batch result on main thread to assign IDs
             // and manage relations.
             for (final p in poemsData) {
+              if (!seenPoemKeys.add(p['poemKey'] as String)) {
+                skippedPoems++;
+                continue;
+              }
               final poemId = nextPoemId++;
               p['id'] = poemId; // Assign manual ID
 
@@ -617,6 +632,16 @@ class PoeTreeBuilder {
     print('     • Files processed: $processedFiles');
   }
 
+  /// Reads the SQLite `user_version` pragma without opening drift.
+  static int _dbSchemaVersion(File dbFile) {
+    final probe = sqlite3.open(dbFile.path);
+    try {
+      return probe.select('PRAGMA user_version').single['user_version'] as int;
+    } finally {
+      probe.dispose();
+    }
+  }
+
   /// Compress all generated .db files to .zst using Isolates
   Future<void> compressDatabases(List<String> selectedLanguages) async {
     final dbDir = Directory(dbOutputDir);
@@ -632,9 +657,11 @@ class PoeTreeBuilder {
 
         if (!selectedLanguages.contains(lang)) return false;
 
-        // Check if .zst file already exists
+        // Recompress when the database is newer than its archive, so a
+        // rebuilt database never ships behind a stale pack.
         final zstFile = File(path.setExtension(f.path, '.db.zst'));
-        if (zstFile.existsSync()) {
+        if (zstFile.existsSync() &&
+            !f.lastModifiedSync().isAfter(zstFile.lastModifiedSync())) {
           print('     ⏭️  Skipping $lang compression (already compressed)');
           return false;
         }
@@ -729,7 +756,8 @@ class PoeTreeBuilder {
 /// Extract and map PoeTree JSON to Map structure for JSON insert.
 ///
 /// Identity uses the upstream poem id when present and falls back to a
-/// SHA-256 of the UTF-8 body, so keys stay stable across corpus rebuilds.
+/// SHA-256 of the title and UTF-8 body, so keys stay stable across corpus
+/// rebuilds while distinct id-less variants keep distinct keys.
 Map<String, dynamic>? extractPoemData(
   Map<String, dynamic> data,
   String langCode, [
@@ -791,8 +819,11 @@ Map<String, dynamic>? extractPoemData(
 
     final contentHash = sha256.convert(utf8.encode(body)).toString();
     final sourceId = data['id']?.toString();
+    // Id-less records fall back to a title+body hash so distinct variants
+    // keep distinct keys; byte-identical duplicates still share a key and
+    // are dropped by the pre-insert dedup instead of failing the build.
     final identity = sourceId == null || sourceId.isEmpty
-        ? contentHash
+        ? sha256.convert(utf8.encode('$title\n$body')).toString()
         : sourceId;
 
     return {

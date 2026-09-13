@@ -41,13 +41,35 @@ void main() {
         'onboarding_completed': true,
         'selected_language': 'en',
       });
-      final harness = _AppHarness();
+      final harness = _AppHarness()..installGateFiles(language: 'en');
 
       await tester.pumpWidget(harness.build());
       await tester.pumpAndSettle();
 
       expect(harness.openedLanguages, ['en']);
       expect(find.text('Select Language'), findsNothing);
+    });
+
+    testWidgets('returns to onboarding when resources are missing', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        'onboarding_completed': true,
+        'selected_language': 'en',
+      });
+      final harness = _AppHarness();
+
+      await tester.pumpWidget(harness.build());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Select Language'), findsOneWidget);
+      expect(
+        harness.openedLanguages,
+        isEmpty,
+        reason: 'missing resources must not open a database',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('onboarding_completed'), isFalse);
     });
 
     testWidgets('installs resources and opens the database on completion', (
@@ -116,6 +138,12 @@ void main() {
 /// Builds the [App] with in-memory databases and no network access.
 class _AppHarness {
   final openedLanguages = <String>[];
+  late final Directory modelDir = Directory.systemTemp.createTempSync(
+    'app-models',
+  );
+  late final Directory corpusDir = Directory.systemTemp.createTempSync(
+    'app-corpora',
+  );
 
   Widget build({
     LockedResource? speechModel,
@@ -129,8 +157,8 @@ class _AppHarness {
         return db;
       },
       resources: ResourceRepository(
-        modelDir: Directory.systemTemp.createTempSync('app-models'),
-        corpusDir: Directory.systemTemp.createTempSync('app-corpora'),
+        modelDir: modelDir,
+        corpusDir: corpusDir,
         client: client,
       ),
       manifestClient: CorpusManifestClient(
@@ -140,5 +168,14 @@ class _AppHarness {
       speechModel: speechModel,
       prefs: SharedPreferences.getInstance(),
     );
+  }
+
+  /// Writes placeholder gate files so relaunch treats resources as present.
+  /// Installs still download: placeholders never match a real hash.
+  void installGateFiles({required String language, String? modelId}) {
+    File(
+      '${modelDir.path}/${modelId ?? defaultSpeechModelId}',
+    ).writeAsStringSync('gate');
+    File('${corpusDir.path}/$language.db.zst').writeAsStringSync('gate');
   }
 }

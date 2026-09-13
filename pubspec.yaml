@@ -4,8 +4,10 @@ version: 0.1.0+1
 publish_to: none
 
 environment:
-  sdk: ^3.9.0
-  flutter: ^3.35.0
+  # Floors match the committed lockfile (dart >=3.11.0, flutter >=3.38.4):
+  # older SDKs cannot resolve this dependency set.
+  sdk: ^3.11.0
+  flutter: ^3.38.4
 
 dependencies:
   bloc: ^9.2.0

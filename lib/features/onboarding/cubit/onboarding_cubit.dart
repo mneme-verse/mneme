@@ -97,7 +97,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
   StreamSubscription<ResourceState>? _progressSubscription;
-
+  InstallCancelToken? _runToken;
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
 
@@ -106,6 +106,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   /// Failures surface as [OnboardingPhase.failed] with [OnboardingState.error];
   Future<void> selectLanguage(String language) async {
     await _progressSubscription?.cancel();
+    // A new run supersedes any previous one, including a manifest fetch
+    // that has no resource token yet.
+    _runToken?.cancel();
+    final runToken = _runToken = InstallCancelToken();
     _progressSubscription = _resources.states.listen((update) {
       // Mirror byte progress into the installing state. Events from a
       // previous run are impossible (the old subscription is canceled
@@ -131,6 +135,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
     try {
       final pack = await _manifestClient.packFor(language);
+      if (runToken.isCanceled) throw InstallCanceledException(pack.file);
       emit(
         state.copyWith(
           resource: OnboardingResource.corpus,
@@ -145,6 +150,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       );
 
       final model = _speechModel;
+      if (runToken.isCanceled) throw InstallCanceledException(model.id);
       emit(
         state.copyWith(
           resource: OnboardingResource.speechModel,
@@ -173,10 +179,12 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   /// Cancels the in-flight install of the current language.
   void cancel() {
+    _runToken?.cancel();
     final language = state.language;
     if (language == null) return;
 
     // Cancel both possible in-flight resources for this onboarding run.
+    // Pack filenames are language-keyed by the manifest contract.
     _resources
       ..cancel('$language.db.zst')
       ..cancel(defaultSpeechModelId);
@@ -189,6 +197,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   @override
   Future<void> close() async {
+    _runToken?.cancel();
     await _progressSubscription?.cancel();
     return super.close();
   }

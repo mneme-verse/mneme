@@ -168,6 +168,10 @@ class ResourceInstaller {
     return _fileMatches(_destinationFor(id), expectedSha256);
   }
 
+  /// True when a file exists for [id]. Launch gate only; use [isInstalled]
+  /// when the bytes must be verified.
+  bool exists(String id) => _destinationFor(id).existsSync();
+
   File _destinationFor(String id) {
     if (!_isSafeFileName(id)) {
       throw ArgumentError.value(id, 'id', 'must be a plain file name');

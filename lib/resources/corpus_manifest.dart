@@ -67,7 +67,7 @@ class CorpusManifestClient {
   ///
   /// Throws [CorpusManifestException] for missing entries or entries that
   /// violate the schema-two contract (`sha256` hex, positive size,
-  /// `schema_version` 2).
+  /// `schema_version` 2, file exactly `<language>.db.zst`).
   Future<CorpusPackInfo> packFor(String language) async {
     final response = await _client.get(manifestUrl);
     if (response.statusCode != 200) {
@@ -112,13 +112,14 @@ class CorpusManifestClient {
       );
     }
 
+    // The connection layer probes `<language>.db.zst` and the installer
+    // treats the id as a plain file name, so the manifest filename must
+    // be exactly the language-keyed pack: anything else would install a
+    // file the app never opens.
     final file = entry['file'];
-    if (file is! String ||
-        !file.endsWith('.db.zst') ||
-        file.contains('/') ||
-        file.codeUnits.contains(0x5C)) {
+    if (file is! String || file != '$language.db.zst') {
       throw CorpusManifestException(
-        'entry "$language" lacks a safe single-segment .db.zst file name',
+        'entry "$language" must name "$language.db.zst"',
       );
     }
 

@@ -207,7 +207,13 @@ class RecitationCubit extends Cubit<RecitationState> {
           expectedKeys: expectedKeys,
           hypothesisKeys: hypothesisKeys,
         );
-        final score = alignment.matchedWords / hypothesisKeys.length;
+        // Precision against the alignable window: a transcript longer
+        // than the window scores its best window-sized span, so long
+        // recitations still locate. Short transcripts are unchanged.
+        final span = hypothesisKeys.length < expectedKeys.length
+            ? hypothesisKeys.length
+            : expectedKeys.length;
+        final score = alignment.matchedWords / span;
         if (!isLocated(matchedWords: alignment.matchedWords, score: score)) {
           continue;
         }

@@ -343,4 +343,24 @@ void main() {
       ResourcePhase.downloading,
     );
   });
+
+  test('concurrent installs of one resource share a download', () async {
+    var requests = 0;
+    final counting = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => counting.close(force: true));
+    counting.listen((request) async {
+      requests++;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      request.response.add(payload);
+      await request.response.close();
+    });
+    final url = 'http://127.0.0.1:${counting.port}/shared.bin';
+    final files = await Future.wait([
+      repository.installCorpusPack('shared.bin', url, shaOf(payload)),
+      repository.installCorpusPack('shared.bin', url, shaOf(payload)),
+    ]);
+
+    expect(files[0].path, files[1].path);
+    expect(requests, 1);
+  });
 }

@@ -92,8 +92,9 @@ class PoetryRepository {
   ///
   /// [termKeys] are normalized hypothesis keys. Each key becomes a quoted
   /// FTS5 term joined with OR, so hostile input stays a literal search and
-  /// can never inject FTS syntax. Returns at most [limit] candidates
-  /// ordered by passage id. Empty input short-circuits to no candidates.
+  /// can never inject FTS syntax. Most relevant passages come first
+  /// (`rank`), then passage id, so common words cannot starve a later
+  /// poem past the [limit]. Empty input short-circuits to no candidates.
   Future<List<RecitationCandidate>> findCandidatePassages(
     List<String> termKeys, {
     int limit = 5,
@@ -112,7 +113,7 @@ class PoetryRepository {
       JOIN poem_passages p ON p.id = passages_fts.rowid
       JOIN poems ON poems.id = p.poem_id
       WHERE passages_fts MATCH ?
-      ORDER BY p.id
+      ORDER BY rank, p.id
       LIMIT ?
     ''';
     final rows = await _db

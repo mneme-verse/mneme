@@ -86,7 +86,6 @@ Future<void> seedDatabase(AppDatabase db, {String? language}) async {
   final authorsList = <Map<String, dynamic>>[];
   final poemAuthorsList = <Map<String, dynamic>>[];
   var authorIdCounter = 1;
-  var poemIdCounter = 1;
 
   for (final poem in poems) {
     final authorName = poem['author_names']! as String;
@@ -107,13 +106,13 @@ Future<void> seedDatabase(AppDatabase db, {String? language}) async {
       authorEntry['poem_count'] = (authorEntry['poem_count'] as int) + 1;
     }
 
-    // Create PoemAuthor relationship
+    // Create PoemAuthor relationship from the poem's real id: seed rows
+    // carry explicit ids (Russian rows are 5 and 6), so a separate
+    // counter would link them to nonexistent poems.
     poemAuthorsList.add({
-      'poem_id': poemIdCounter,
+      'poem_id': poem['id'],
       'author_id': authorId,
     });
-
-    poemIdCounter++;
   }
 
   await db.batchInsertAuthors(authorsList);

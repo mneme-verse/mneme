@@ -34,6 +34,8 @@ class AppBlocObserver extends BlocObserver {
 /// preferences; onboarding installs resources before any language is
 /// opened.
 Future<void> bootstrap() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   FlutterError.onError = (details) {
     log(details.exceptionAsString(), stackTrace: details.stack);
   };

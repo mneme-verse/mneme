@@ -70,11 +70,23 @@ class _AppState extends State<App> {
     final language = prefs.getString('selected_language');
     if (!mounted) return;
 
-    if (completed && language != null) {
-      _openLanguage(language);
-    } else {
+    // Preferences alone do not prove the resources survived: a removed
+    // pack or model sends the user back through onboarding, which
+    // reinstalls them. The install verified the hashes; presence is a
+    // sufficient launch gate.
+    final modelId = widget.speechModel?.id ?? defaultSpeechModelId;
+    final intact =
+        completed &&
+        language != null &&
+        widget.resources.isModelPresent(modelId) &&
+        widget.resources.isCorpusPackPresent('$language.db.zst');
+    if (!intact) {
+      await prefs.setBool('onboarding_completed', false);
+      if (!mounted) return;
       setState(() => _mode = _onboarding);
+      return;
     }
+    _openLanguage(language);
   }
 
   void _openLanguage(String language) {

@@ -24,12 +24,14 @@ const harnessFixtureSeconds = 1;
 
 /// Sine frequency for the tone fixture.
 const harnessSineHz = 440.0;
+
 /// Filenames generated under the fixtures directory.
 const harnessFixtureNames = [
   'silence_1s.wav',
   'sine440_1s.wav',
   'noise_1s.wav',
 ];
+
 /// Manifest filename written alongside the fixtures.
 const harnessManifestName = 'manifest.json';
 
@@ -253,7 +255,8 @@ ArgParser _buildArgParser() {
     )
     ..addOption(
       'model',
-      help: 'Optional GGUF model for a negative plumbing run of '
+      help:
+          'Optional GGUF model for a negative plumbing run of '
           'transcribe-cli over the silence fixture. Expects exit 0; '
           'the transcript is not asserted.',
     );
@@ -266,8 +269,10 @@ void _printHelp(ArgParser parser) {
   print('');
   print(parser.usage);
   print('');
-  print('Without --model, inference is reported as SKIP: no accuracy claim '
-      'is made from synthetic fixtures.');
+  print(
+    'Without --model, inference is reported as SKIP: no accuracy claim '
+    'is made from synthetic fixtures.',
+  );
 }
 
 Future<int> _run(String executable, List<String> args) async {
@@ -297,32 +302,8 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  // 1. Pin check: the vendored engine must be the locked revision.
-  final locked = await readLockedRevision();
-  final revResult = await Process.run(
-    'git',
-    ['-C', 'third_party/transcribe.cpp', 'rev-parse', 'HEAD'],
-  );
-  if (revResult.exitCode != 0) {
-    print('FAIL: cannot read transcribe.cpp revision: ${revResult.stderr}');
-    print('Clone the engine, then check out the locked revision:');
-    print('  git clone https://github.com/handy-computer/transcribe.cpp '
-        'third_party/transcribe.cpp');
-    print('  git -C third_party/transcribe.cpp checkout $locked');
-    exitCode = 1;
-    return;
-  }
-  final actual = (revResult.stdout as String).trim();
-  if (!revisionMatches(actual, locked)) {
-    print('FAIL: transcribe.cpp at $actual, locked at $locked.');
-    print('Update docs/model-lock.json and lib/resources/resource_locks.dart '
-        'together; never point the harness at a moving ref.');
-    exitCode = 1;
-    return;
-  }
-  print('Engine revision pinned: $actual');
-
-  // 2. Synthetic fixtures plus manifest.
+  // 1. Synthetic fixtures plus manifest. Runs without the engine checkout
+  // so fixture generation never depends on the 124 MB vendor tree.
   final fixturesDir = Directory(results['fixtures-dir'] as String);
   final entries = await writeFixtures(fixturesDir);
   final written = entries.map((entry) => entry['file']).toSet();
@@ -349,6 +330,36 @@ Future<void> main(List<String> args) async {
     print('SKIP: model inference (no --model given or build skipped).');
     return;
   }
+  // 2. Pin check: the vendored engine must be the locked revision.
+  // Runs after the fixture-only exit so --skip-build works without the
+  // 124 MB engine checkout.
+  final locked = await readLockedRevision();
+  final revResult = await Process.run(
+    'git',
+    ['-C', 'third_party/transcribe.cpp', 'rev-parse', 'HEAD'],
+  );
+  if (revResult.exitCode != 0) {
+    print('FAIL: cannot read transcribe.cpp revision: ${revResult.stderr}');
+    print('Clone the engine, then check out the locked revision:');
+    print(
+      '  git clone https://github.com/handy-computer/transcribe.cpp '
+      'third_party/transcribe.cpp',
+    );
+    print('  git -C third_party/transcribe.cpp checkout $locked');
+    exitCode = 1;
+    return;
+  }
+  final actual = (revResult.stdout as String).trim();
+  if (!revisionMatches(actual, locked)) {
+    print('FAIL: transcribe.cpp at $actual, locked at $locked.');
+    print(
+      'Update docs/model-lock.json and lib/resources/resource_locks.dart '
+      'together; never point the harness at a moving ref.',
+    );
+    exitCode = 1;
+    return;
+  }
+  print('Engine revision pinned: $actual');
 
   // 3. Configure and build the engine with model-free tests only.
   final buildDir = results['build-dir'] as String;
@@ -392,8 +403,10 @@ Future<void> main(List<String> args) async {
   // 5. Optional negative plumbing run: silence through the real CLI.
   final model = results['model'] as String?;
   if (model == null) {
-    print('SKIP: model inference (no --model given). Synthetic fixtures '
-        'prove plumbing only; accuracy needs human recordings.');
+    print(
+      'SKIP: model inference (no --model given). Synthetic fixtures '
+      'prove plumbing only; accuracy needs human recordings.',
+    );
     return;
   }
   const cliNames = ['transcribe-cli', 'transcribe-cli.exe'];
@@ -414,6 +427,8 @@ Future<void> main(List<String> args) async {
     exitCode = code;
     return;
   }
-  print('Plumbing run passed (exit 0). Transcript content is not asserted: '
-      'silence is a crash check, not an accuracy fixture.');
+  print(
+    'Plumbing run passed (exit 0). Transcript content is not asserted: '
+    'silence is a crash check, not an accuracy fixture.',
+  );
 }

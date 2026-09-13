@@ -34,11 +34,16 @@ QueryExecutor openCorpusConnection({
     // the pack/asset provisioning below reinstalls schema v2.
     await invalidateStaleCorpusSchema(file);
 
-    if (pack.existsSync()) {
+    if (pack.existsSync() && !_packInstalled(file, pack)) {
+      // Decompress to a temporary file and rename atomically, so an
+      // interruption can never leave a truncated live database behind.
       final compressed = await Isolate.run(() {
         return ZstdDecoder().convert(File(pack.path).readAsBytesSync());
       });
-      await file.writeAsBytes(compressed, flush: true);
+      final staging = File('${file.path}.tmp');
+      await staging.writeAsBytes(compressed, flush: true);
+      await staging.rename(file.path);
+      await _markPackInstalled(file, pack);
       debugPrint('Decompressed installed corpus pack for "$name".');
     } else if (!file.existsSync()) {
       try {
@@ -83,4 +88,26 @@ Future<void> invalidateStaleCorpusSchema(File file) async {
       'Removed stale corpus database below schema v$corpusSchemaVersion.',
     );
   }
+}
+
+/// True when [file] was decompressed from this exact [pack] (compared by
+/// modification time and size, without hashing hundreds of megabytes on
+/// every launch).
+bool _packInstalled(File file, File pack) {
+  final marker = File('${file.path}.pack');
+  if (!file.existsSync() || !marker.existsSync()) return false;
+  final packStat = pack.statSync();
+  final expected =
+      '${packStat.modified.millisecondsSinceEpoch}'
+      ':${packStat.size}';
+  return marker.readAsStringSync() == expected;
+}
+
+/// Records that [file] was decompressed from [pack].
+Future<void> _markPackInstalled(File file, File pack) async {
+  final packStat = pack.statSync();
+  await File('${file.path}.pack').writeAsString(
+    '${packStat.modified.millisecondsSinceEpoch}:${packStat.size}',
+    flush: true,
+  );
 }

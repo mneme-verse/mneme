@@ -50,6 +50,26 @@ void main() {
       await ruDb.close();
     });
 
+    test('Russian seed poems link to their authors', () async {
+      final ruDb = AppDatabase(NativeDatabase.memory());
+      addTearDown(ruDb.close);
+      await seedDatabase(ruDb, language: 'ru');
+
+      final links = await ruDb.select(ruDb.poemAuthors).get();
+      final poems = await ruDb.select(ruDb.poems).get();
+      final poemIds = {for (final poem in poems) poem.id};
+      expect(links, isNotEmpty);
+      expect(
+        links.map((link) => link.poemId),
+        everyElement(isIn(poemIds)),
+      );
+      final authors = await ruDb.select(ruDb.authors).get();
+      expect(
+        authors.map((author) => author.name),
+        contains('Александр Пушкин'),
+      );
+    });
+
     test('Language filter excludes other languages', () async {
       final results = await repo.searchPoems('', [
         'en',

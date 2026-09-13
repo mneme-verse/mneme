@@ -113,6 +113,25 @@ void main() {
       final result = extractPoemData(json, 'en');
       expect(result, isNull);
     });
+
+    test('distinguishes id-less variants by title and body', () {
+      Map<String, dynamic> poem(String title, String body) => {
+        'title': title,
+        'author': {'name': 'A'},
+        'body': [
+          {'text': body},
+        ],
+      };
+
+      final first = extractPoemData(poem('Same', 'Body'), 'en');
+      final variant = extractPoemData(poem('Same', 'Other body'), 'en');
+      final twin = extractPoemData(poem('Same', 'Body'), 'en');
+
+      expect(first, isNotNull);
+      expect(variant, isNotNull);
+      expect(first!['poemKey'], isNot(variant!['poemKey']));
+      expect(twin!['poemKey'], first['poemKey']);
+    });
   });
 
   group('PoeTreeBuilder', () {

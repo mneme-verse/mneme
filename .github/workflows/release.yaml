@@ -105,11 +105,14 @@ jobs:
           sha256sum "$out" | tee "$out.sha256"
           if [ "$APK_LABEL" = "debug-signed" ]; then
             notes='Sideload testing only: ephemeral debug signature, no stable update identity. Not the production release.'
+            prerelease='--prerelease'
           else
             notes='Production release APK with SHA-256 checksum.'
+            prerelease=''
           fi
+          # shellcheck disable=SC2086
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$notes"
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "$notes" $prerelease
           gh release upload "$GITHUB_REF_NAME" "$out" "$out.sha256" --clobber
 
   corpus-data:

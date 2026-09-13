@@ -1,9 +1,34 @@
 import 'package:drift/drift.dart';
+// DriftRemoteException is only exported through the experimental remote
+// API, and this use only reads its failure cause.
+// ignore: implementation_imports
+import 'package:drift/src/remote/communication.dart';
 import 'package:fsrs/fsrs.dart' as fsrs;
 import 'package:mneme/db/study_database.dart';
+import 'package:sqlite3/sqlite3.dart';
+
+/// SQLITE_BUSY: a concurrent transaction holds the write lock.
+const _sqliteBusy = 5;
+
+/// SQLITE_CONSTRAINT_UNIQUE: a concurrent insert won the unique slot.
+const _sqliteConstraintUnique = 2067;
+
+/// SQLite primary result code for [error], unwrapping the isolate
+/// boundary: drift serves databases from a background isolate and
+/// surfaces failures as [DriftRemoteException]. Null when the error is
+/// not a SQLite failure.
+int? _sqliteResultCode(Object error) {
+  final cause = error is DriftRemoteException ? error.remoteCause : error;
+  return cause is SqliteException ? cause.resultCode : null;
+}
+
+/// SQLite extended result code for [error]. See [_sqliteResultCode].
+int? _sqliteExtendedCode(Object error) {
+  final cause = error is DriftRemoteException ? error.remoteCause : error;
+  return cause is SqliteException ? cause.extendedResultCode : null;
+}
 
 /// Persists FSRS scheduling state, keyed by stable poem keys.
-///
 /// Cards are database-allocated (never time-based ids) and all datetimes
 /// are stored as UTC epoch milliseconds. Review submission recomputes from
 /// the stored card inside one transaction, and one (card, instant) slot
@@ -63,39 +88,70 @@ class StudyRepository {
     required fsrs.Rating rating,
     DateTime? reviewDateTime,
     int? reviewDuration,
-  }) {
+  }) async {
     final at = (reviewDateTime ?? DateTime.now().toUtc()).toUtc();
-    return _db.transaction(() async {
-      final card = await _getOrCreateCard(poemKey);
-      final existing =
-          await (_db.select(_db.studyReviewLogs)..where(
-                (log) =>
-                    log.cardId.equals(card.cardId) &
-                    log.reviewMillis.equals(at.millisecondsSinceEpoch),
-              ))
-              .getSingleOrNull();
-      if (existing != null) return (card: card, log: _toLog(existing));
-
-      final result = _scheduler.reviewCard(
-        card,
-        rating,
-        reviewDateTime: at,
-        reviewDuration: reviewDuration,
-      );
-      await (_db.update(
-        _db.studyCards,
-      )..where((row) => row.id.equals(card.cardId))).write(
-        StudyCardsCompanion(
-          state: Value(result.card.state.value),
-          step: Value(result.card.step),
-          stability: Value(result.card.stability),
-          difficulty: Value(result.card.difficulty),
-          dueMillis: Value(result.card.due.millisecondsSinceEpoch),
-          lastReviewMillis: Value(
-            result.card.lastReview?.millisecondsSinceEpoch,
-          ),
+    // A busy snapshot (concurrent writer) backs off and retries once;
+    // anything else propagates.
+    try {
+      return await _db.transaction(
+        () => _submitOnce(
+          poemKey: poemKey,
+          rating: rating,
+          at: at,
+          reviewDuration: reviewDuration,
         ),
       );
+    } on Exception catch (error) {
+      if (_sqliteResultCode(error) != _sqliteBusy) rethrow;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      return _db.transaction(
+        () => _submitOnce(
+          poemKey: poemKey,
+          rating: rating,
+          at: at,
+          reviewDuration: reviewDuration,
+        ),
+      );
+    }
+  }
+
+  Future<({fsrs.Card card, fsrs.ReviewLog log})> _submitOnce({
+    required String poemKey,
+    required fsrs.Rating rating,
+    required DateTime at,
+    required int? reviewDuration,
+  }) async {
+    final card = await _getOrCreateCard(poemKey);
+    final existing =
+        await (_db.select(_db.studyReviewLogs)..where(
+              (log) =>
+                  log.cardId.equals(card.cardId) &
+                  log.reviewMillis.equals(at.millisecondsSinceEpoch),
+            ))
+            .getSingleOrNull();
+    if (existing != null) return (card: card, log: _toLog(existing));
+
+    final result = _scheduler.reviewCard(
+      card,
+      rating,
+      reviewDateTime: at,
+      reviewDuration: reviewDuration,
+    );
+    await (_db.update(
+      _db.studyCards,
+    )..where((row) => row.id.equals(card.cardId))).write(
+      StudyCardsCompanion(
+        state: Value(result.card.state.value),
+        step: Value(result.card.step),
+        stability: Value(result.card.stability),
+        difficulty: Value(result.card.difficulty),
+        dueMillis: Value(result.card.due.millisecondsSinceEpoch),
+        lastReviewMillis: Value(
+          result.card.lastReview?.millisecondsSinceEpoch,
+        ),
+      ),
+    );
+    try {
       await _db
           .into(_db.studyReviewLogs)
           .insert(
@@ -106,8 +162,21 @@ class StudyRepository {
               reviewDurationMillis: Value(reviewDuration),
             ),
           );
-      return (card: result.card, log: result.reviewLog);
-    });
+    } on Exception catch (error) {
+      // A concurrent submission won this slot: return its outcome
+      // instead of scheduling twice.
+      if (_sqliteExtendedCode(error) != _sqliteConstraintUnique) rethrow;
+      final winner =
+          await (_db.select(_db.studyReviewLogs)..where(
+                (log) =>
+                    log.cardId.equals(card.cardId) &
+                    log.reviewMillis.equals(at.millisecondsSinceEpoch),
+              ))
+              .getSingleOrNull();
+      if (winner != null) return (card: card, log: _toLog(winner));
+      rethrow;
+    }
+    return (card: result.card, log: result.reviewLog);
   }
 
   Future<fsrs.Card> _getOrCreateCard(String poemKey) async {
@@ -119,16 +188,28 @@ class StudyRepository {
     if (existing != null) return _toCard(existing);
 
     final now = DateTime.now().toUtc();
-    final id = await _db
-        .into(_db.studyCards)
-        .insert(
-          StudyCardsCompanion.insert(
-            poemKey: poemKey,
-            state: fsrs.State.learning.value,
-            dueMillis: now.millisecondsSinceEpoch,
-          ),
-        );
-    return fsrs.Card(cardId: id, due: now);
+    try {
+      final id = await _db
+          .into(_db.studyCards)
+          .insert(
+            StudyCardsCompanion.insert(
+              poemKey: poemKey,
+              state: fsrs.State.learning.value,
+              dueMillis: now.millisecondsSinceEpoch,
+            ),
+          );
+      return fsrs.Card(cardId: id, due: now);
+    } on Exception catch (error) {
+      // A concurrent creation won the poem key: use its card.
+      if (_sqliteExtendedCode(error) != _sqliteConstraintUnique) rethrow;
+      final winner =
+          await (_db.select(_db.studyCards)..where(
+                (row) => row.poemKey.equals(poemKey),
+              ))
+              .getSingleOrNull();
+      if (winner != null) return _toCard(winner);
+      rethrow;
+    }
   }
 
   fsrs.Card _toCard(StudyCard row) => fsrs.Card(

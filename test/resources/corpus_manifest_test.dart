@@ -48,6 +48,8 @@ void main() {
       'sub/ru.db.zst',
       r'sub\ru.db.zst',
       '/abs.db.zst',
+      // Well-formed but not the language-keyed pack the connection opens.
+      'other.db.zst',
     ]) {
       await expectLater(
         clientFor({'ru': entry(file: file)}).packFor('ru'),

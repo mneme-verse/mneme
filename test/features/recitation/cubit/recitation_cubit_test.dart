@@ -276,5 +276,30 @@ void main() {
         ],
       );
     }
+
+    blocTest<RecitationCubit, RecitationState>(
+      'locates transcripts longer than the passage window',
+      build: () {
+        when(
+          () => poetryRepository.findCandidatePassages(any()),
+        ).thenAnswer((_) async => [candidate()]);
+        return RecitationCubit(poetryRepository: poetryRepository);
+      },
+      act: (cubit) async {
+        cubit.start();
+        final long = List.filled(
+          6,
+          'Once upon a midnight dreary while I pondered weak and weary',
+        ).join(' ');
+        await cubit.onTranscript(long);
+      },
+      expect: () => [
+        isA<RecitationState>(),
+        isA<RecitationState>()
+            .having((s) => s.located?.startToken, 'start', 0)
+            .having((s) => s.score, 'score', 1.0)
+            .having((s) => s.extraWords, 'extra words', greaterThan(0)),
+      ],
+    );
   });
 }

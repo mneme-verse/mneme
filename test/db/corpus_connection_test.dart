@@ -94,6 +94,24 @@ void main() {
     expect(await readTitles('ru'), ['Pack poem']);
   });
 
+  test('reopening with the same pack skips decompression', () async {
+    final source = File(p.join(supportDir.path, 'source.db'));
+    await insertPoem(source, 'Pack poem');
+    final packDir = Directory(p.join(supportDir.path, 'corpora'))..createSync();
+    await File(
+      p.join(packDir.path, 'ru.db.zst'),
+    ).writeAsBytes(ZstdCodec().encode(await source.readAsBytes()));
+    await insertPoem(File(p.join(docsDir.path, 'ru.db')), 'Stale poem');
+
+    expect(await readTitles('ru'), ['Pack poem']);
+    final dbFile = File(p.join(docsDir.path, 'ru.db'));
+    final firstWrite = dbFile.lastModifiedSync();
+    expect(File('${dbFile.path}.pack').existsSync(), isTrue);
+
+    expect(await readTitles('ru'), ['Pack poem']);
+    expect(dbFile.lastModifiedSync(), firstWrite);
+  });
+
   test('current schema files are kept as is', () async {
     final file = File(p.join(docsDir.path, 'en.db'));
     await insertPoem(file, 'Kept poem');

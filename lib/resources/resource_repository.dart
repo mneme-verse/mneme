@@ -104,6 +104,14 @@ class ResourceRepository {
     return _models.isInstalled(model.id, model.sha256);
   }
 
+  /// True when a file with the model [id] exists. No hash check: install
+  /// verified the bytes, and this is a cheap launch gate, not verification.
+  bool isModelPresent(String id) => _models.exists(id);
+
+  /// True when the language pack file exists. Same cheap-gate contract
+  /// as [isModelPresent].
+  bool isCorpusPackPresent(String id) => _corpora.exists(id);
+
   /// Starts installing [model] (no-op when already installed).
   ///
   /// Progress and errors surface through [states]; the returned future
@@ -137,7 +145,29 @@ class ResourceRepository {
   /// Cancels the in-flight install of [id], if any.
   void cancel(String id) => _cancelTokens[id]?.cancel();
 
+  /// Installs started through [_install], keyed by resource id. Concurrent
+  /// calls for the same id share one download instead of truncating each
+  /// other's partial file or stealing each other's cancel token.
+  final _ongoing = <String, Future<File>>{};
+
   Future<File> _install(
+    LockedResource resource,
+    ResourceInstaller installer,
+  ) async {
+    final ongoing = _ongoing[resource.id];
+    if (ongoing != null) return ongoing;
+    late final Future<File> future;
+    future = _runInstall(resource, installer).whenComplete(() {
+      if (identical(_ongoing[resource.id], future)) {
+        // ignore: discarded_futures -- Map.remove returns the entry.
+        _ongoing.remove(resource.id);
+      }
+    });
+    _ongoing[resource.id] = future;
+    return future;
+  }
+
+  Future<File> _runInstall(
     LockedResource resource,
     ResourceInstaller installer,
   ) async {
