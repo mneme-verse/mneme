@@ -2,15 +2,19 @@ import 'package:bloc_test/bloc_test.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fsrs/fsrs.dart' as fsrs;
 import 'package:mneme/db/database.dart';
 import 'package:mneme/db/seed_data.dart';
 import 'package:mneme/features/author/cubit/author_cubit.dart';
 import 'package:mneme/features/reader/cubit/reader_cubit.dart';
 import 'package:mneme/features/search/cubit/search_cubit.dart';
 import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/repository/study_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockPoetryRepository extends Mock implements PoetryRepository {}
+
+class MockStudyRepository extends Mock implements StudyRepository {}
 
 /// Seeds an English in-memory database for the group repository.
 Future<PoetryRepository> _seededRepo() async {
@@ -28,6 +32,8 @@ void main() {
   setUp(() async => repo = await _seededRepo());
 
   group('ReaderCubit', () {
+    setUp(() => registerFallbackValue(fsrs.Rating.good));
+
     blocTest<ReaderCubit, ReaderState>(
       'loads a poem by id',
       build: () => ReaderCubit(repo),
@@ -61,9 +67,74 @@ void main() {
       act: (cubit) => cubit.load(1),
       expect: () => [const ReaderLoading(), isA<ReaderError>()],
     );
+
+    late MockStudyRepository study;
+
+    blocTest<ReaderCubit, ReaderState>(
+      'grade records the rating for the loaded poem',
+      build: () {
+        study = MockStudyRepository();
+        when(
+          () => study.submitReview(
+            poemKey: any(named: 'poemKey'),
+            rating: any(named: 'rating'),
+          ),
+        ).thenAnswer(
+          (_) async => (
+            card: fsrs.Card(cardId: 1),
+            log: fsrs.ReviewLog(
+              cardId: 1,
+              rating: fsrs.Rating.good,
+              reviewDateTime: DateTime.utc(2026, 9, 13),
+            ),
+          ),
+        );
+        return ReaderCubit(repo, study);
+      },
+      act: (cubit) async {
+        await cubit.load(1);
+        await cubit.grade(fsrs.Rating.good);
+      },
+      expect: () => [
+        const ReaderLoading(),
+        isA<ReaderLoaded>(),
+      ],
+      verify: (_) => verify(
+        () => study.submitReview(
+          poemKey: 'poetree:en:raven',
+          rating: fsrs.Rating.good,
+        ),
+      ).called(1),
+    );
+
+    blocTest<ReaderCubit, ReaderState>(
+      'grade without a study repository is a no-op',
+      build: () => ReaderCubit(repo),
+      act: (cubit) async {
+        await cubit.load(1);
+        await cubit.grade(fsrs.Rating.good);
+      },
+      expect: () => [
+        const ReaderLoading(),
+        isA<ReaderLoaded>(),
+      ],
+    );
   });
 
   group('AuthorCubit', () {
+    blocTest<AuthorCubit, AuthorState>(
+      'repository failure emits error',
+      build: () {
+        final failing = MockPoetryRepository();
+        when(
+          () => failing.getPoemsByAuthor(any()),
+        ).thenThrow(Exception('db gone'));
+        return AuthorCubit(failing);
+      },
+      act: (cubit) => cubit.load('Poe'),
+      expect: () => [const AuthorLoading(), isA<AuthorError>()],
+    );
+
     blocTest<AuthorCubit, AuthorState>(
       'loads the author poems',
       build: () => AuthorCubit(repo),
@@ -105,6 +176,20 @@ void main() {
           contains('The Raven'),
         ),
       ],
+    );
+
+    blocTest<SearchCubit, SearchState>(
+      'repository failure emits error',
+      build: () {
+        final failing = MockPoetryRepository();
+        when(
+          () => failing.searchPoems(any(), any()),
+        ).thenThrow(Exception('db gone'));
+        return SearchCubit(failing, debounce: Duration.zero);
+      },
+      act: (cubit) => cubit.query('Rav', ['en']),
+      wait: const Duration(milliseconds: 20),
+      expect: () => [const SearchLoading(), isA<SearchError>()],
     );
 
     blocTest<SearchCubit, SearchState>(

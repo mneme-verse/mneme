@@ -114,9 +114,6 @@ class _AppState extends State<App> {
     _openLanguage(language);
   }
 
-  PoetryRepository get _poetryRepository => PoetryRepository(_database!);
-  StudyRepository get _studyRepository => StudyRepository(_studyDatabase!);
-
   @override
   void dispose() {
     unawaited(_database?.close() ?? Future<void>.value());
@@ -126,7 +123,11 @@ class _AppState extends State<App> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    // Repositories sit above MaterialApp so pushed routes (reader, search,
+    // study, author) resolve them; only home mode opens databases.
+    final database = _database;
+    final studyDatabase = _studyDatabase;
+    final content = MaterialApp(
       theme: ThemeData(
         appBarTheme: AppBarTheme(
           backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -145,14 +146,16 @@ class _AppState extends State<App> {
           speechModel: widget.speechModel,
           onCompleted: _onOnboardingCompleted,
         ),
-        _ => MultiRepositoryProvider(
-          providers: [
-            RepositoryProvider.value(value: _poetryRepository),
-            RepositoryProvider.value(value: _studyRepository),
-          ],
-          child: HomePage(language: _language),
-        ),
+        _ => HomePage(language: _language),
       },
+    );
+    if (database == null || studyDatabase == null) return content;
+    return MultiRepositoryProvider(
+      providers: [
+        RepositoryProvider.value(value: PoetryRepository(database)),
+        RepositoryProvider.value(value: StudyRepository(studyDatabase)),
+      ],
+      child: content,
     );
   }
 }

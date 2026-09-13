@@ -17,6 +17,7 @@ import 'package:mneme/features/study/cubit/study_cubit.dart';
 import 'package:mneme/features/study/view/study_page.dart';
 import 'package:mneme/l10n/gen/app_localizations.dart';
 import 'package:mneme/repository/poetry_repository.dart';
+import 'package:mneme/repository/study_repository.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockReaderCubit extends MockCubit<ReaderState> implements ReaderCubit {}
@@ -27,13 +28,29 @@ class MockStudyCubit extends MockCubit<StudyState> implements StudyCubit {}
 
 class MockAuthorCubit extends MockCubit<AuthorState> implements AuthorCubit {}
 
-/// Pumps [child] with Material localizations.
-Future<void> pumpLocalized(WidgetTester tester, Widget child) {
+class MockStudyRepository extends Mock implements StudyRepository {}
+
+/// Pumps [child] with Material localizations and the repositories pushed
+/// routes resolve, mirroring the app root.
+Future<void> pumpLocalized(
+  WidgetTester tester,
+  Widget child, {
+  PoetryRepository? poetry,
+  StudyRepository? study,
+}) {
+  final home = MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: child,
+  );
+  if (poetry == null && study == null) return tester.pumpWidget(home);
   return tester.pumpWidget(
-    MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: child,
+    MultiRepositoryProvider(
+      providers: [
+        if (poetry != null) RepositoryProvider.value(value: poetry),
+        if (study != null) RepositoryProvider.value(value: study),
+      ],
+      child: home,
     ),
   );
 }
@@ -67,6 +84,38 @@ void main() {
       );
       expect(find.text('The Raven'), findsOneWidget);
       expect(find.textContaining('midnight dreary'), findsOneWidget);
+    });
+
+    testWidgets('missing and error states render messages', (tester) async {
+      whenListen(
+        cubit,
+        const Stream<ReaderState>.empty(),
+        initialState: const ReaderMissing(),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(
+          value: cubit,
+          child: const ReaderView(reviewMode: false),
+        ),
+      );
+      expect(find.text('Poem not found'), findsOneWidget);
+    });
+
+    testWidgets('error state renders the message', (tester) async {
+      whenListen(
+        cubit,
+        const Stream<ReaderState>.empty(),
+        initialState: const ReaderError('db gone'),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(
+          value: cubit,
+          child: const ReaderView(reviewMode: false),
+        ),
+      );
+      expect(find.text('db gone'), findsOneWidget);
     });
 
     testWidgets('grade button records the rating', (tester) async {
@@ -114,24 +163,140 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Pus');
       verify(() => cubit.query('Pus', ['ru'])).called(1);
     });
+
+    testWidgets('loading state renders a spinner', (tester) async {
+      whenListen(
+        cubit,
+        Stream<SearchState>.fromIterable(const [SearchLoading()]),
+        initialState: const SearchLoading(),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(
+          value: cubit,
+          child: const SearchView(activeLanguages: ['ru']),
+        ),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('loaded results open the reader', (tester) async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await seedDatabase(db, language: 'en');
+      final poetry = PoetryRepository(db);
+      final poems = await poetry.searchPoems('Rav', ['en']);
+      whenListen(
+        cubit,
+        const Stream<SearchState>.empty(),
+        initialState: SearchLoaded(poems),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(
+          value: cubit,
+          child: const SearchView(activeLanguages: ['en']),
+        ),
+        poetry: poetry,
+      );
+      await tester.tap(find.text('The Raven'));
+      await tester.pumpAndSettle();
+      expect(find.text('Once upon a midnight dreary...'), findsOneWidget);
+    });
   });
 
-  group('StudyView', () {
-    late StudyCubit cubit;
-
-    setUp(() => cubit = MockStudyCubit());
-
-    testWidgets('empty queue explains nothing is due', (tester) async {
+  group('StudyView navigation', () {
+    testWidgets('tapping a due row opens the review reader', (tester) async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await seedDatabase(db, language: 'en');
+      final poetry = PoetryRepository(db);
+      final StudyCubit cubit = MockStudyCubit();
       whenListen(
         cubit,
         const Stream<StudyState>.empty(),
-        initialState: const StudyLoaded([]),
+        initialState: const StudyLoaded([
+          (poemId: 1, title: 'The Raven', authorNames: 'Edgar Allan Poe'),
+        ]),
       );
       await pumpLocalized(
         tester,
         BlocProvider.value(value: cubit, child: const StudyView()),
+        poetry: poetry,
+        study: MockStudyRepository(),
       );
-      expect(find.text('Nothing due'), findsOneWidget);
+      await tester.tap(find.text('The Raven'));
+      await tester.pumpAndSettle();
+      expect(find.text('Good'), findsOneWidget);
+    });
+  });
+
+  group('StudyView back navigation', () {
+    testWidgets('leaving without grading skips the reload', (tester) async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await seedDatabase(db, language: 'en');
+      final poetry = PoetryRepository(db);
+      final StudyCubit cubit = MockStudyCubit();
+      var loads = 0;
+
+      Future<void> countLoad(_) async {
+        loads++;
+      }
+
+      whenListen(
+        cubit,
+        const Stream<StudyState>.empty(),
+        initialState: const StudyLoaded([
+          (poemId: 1, title: 'The Raven', authorNames: 'Edgar Allan Poe'),
+        ]),
+      );
+      when(cubit.load).thenAnswer(countLoad);
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(value: cubit, child: const StudyView()),
+        poetry: poetry,
+        study: MockStudyRepository(),
+      );
+      await tester.tap(find.text('The Raven'));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(loads, 0);
+    });
+  });
+
+  group('AuthorView navigation', () {
+    testWidgets('tapping a poem opens the reader', (tester) async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      await seedDatabase(db, language: 'en');
+      final poetry = PoetryRepository(db);
+      final AuthorCubit cubit = MockAuthorCubit();
+      final poems = await poetry.getPoemsByAuthor('Edgar Allan Poe');
+      whenListen(
+        cubit,
+        const Stream<AuthorState>.empty(),
+        initialState: AuthorLoaded(poems),
+      );
+      await pumpLocalized(
+        tester,
+        BlocProvider.value(
+          value: cubit,
+          child: const AuthorView(authorName: 'Edgar Allan Poe'),
+        ),
+        poetry: poetry,
+      );
+      await tester.tap(find.text('Annabel Lee'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('It was many and many a year ago...'),
+        findsOneWidget,
+      );
     });
   });
 

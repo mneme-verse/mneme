@@ -95,7 +95,8 @@ void main() {
       await tester.pumpWidget(buildSubject());
 
       await tester.tap(find.widgetWithIcon(IconButton, Icons.search));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
     });
 
     testWidgets('taps study button', (tester) async {
@@ -104,15 +105,20 @@ void main() {
       await tester.pumpWidget(buildSubject());
 
       await tester.tap(find.widgetWithIcon(IconButton, Icons.school));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('Review'), findsOneWidget);
     });
     testWidgets('taps author item', (tester) async {
       final authors = [const Author(name: 'Author 1', poemCount: 5, id: 1)];
       when(() => homeCubit.state).thenReturn(HomeLoaded(authors));
+      when(
+        () => poetryRepository.getPoemsByAuthor(any()),
+      ).thenAnswer((_) async => []);
       await tester.pumpWidget(buildSubject());
 
       await tester.tap(find.text('Author 1'));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsWidgets);
     });
 
     testWidgets('shows loading indicator when more items available', (
