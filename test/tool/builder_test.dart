@@ -216,7 +216,7 @@ void main() {
         waitForRetry: (_) async {},
       );
 
-      expect(calls, 5);
+      expect(calls, 8);
       expect(builder.extractedZips, isEmpty);
       expect(
         File(path.join(tempDir.path, 'en.zip')).existsSync(),
