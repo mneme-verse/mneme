@@ -65,7 +65,7 @@ jobs:
           find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 3
 
       - name: 📤 Upload arm64 libs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libtranscribe-arm64
           path: /tmp/transcribe-android/**/lib*.so*
@@ -109,7 +109,7 @@ jobs:
           find /tmp/transcribe-linux -name 'libtranscribe.so' | head -n 3
 
       - name: 📤 Upload Linux lib
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libtranscribe-linux64
           path: /tmp/transcribe-linux/**/libtranscribe.so
