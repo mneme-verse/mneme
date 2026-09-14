@@ -12,7 +12,7 @@ environment:
   flutter: ^3.38.4
 
 dependencies:
-  bloc: ^9.2.0
+  bloc: ^9.2.1
   crypto: ^3.0.7
   drift: ^2.20.3
   drift_flutter: ^0.2.2
