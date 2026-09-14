@@ -27,17 +27,29 @@ class FakeAudioInput implements AudioInput {
   /// Permission answer.
   bool permission = true;
 
+  /// Overrides start, null for the default stream behavior.
+  Future<Stream<Uint8List>> Function()? startHook;
+
+  /// Overrides stop, null for success.
+  Future<void> Function()? stopHook;
+
   /// Pushes one PCM16 chunk into the take.
   void pushChunk(Uint8List chunk) => controller.add(chunk);
+
+  /// Fails the take's stream with [error].
+  void pushError(Object error) => controller.addError(error);
 
   @override
   Future<bool> ensurePermission() async => permission;
 
   @override
-  Future<Stream<Uint8List>> startPcm16() async => controller.stream;
+  Future<Stream<Uint8List>> startPcm16() async =>
+      startHook != null ? startHook!() : controller.stream;
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    await stopHook?.call();
+  }
 
   @override
   void dispose() {
@@ -195,6 +207,114 @@ void main() {
       await tester.tap(find.byIcon(Icons.stop));
       // The stop chain drains on real event-loop turns (subscription
       // cancel, recorder stop) that settle does not await.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+    });
+
+    testWidgets('unexpected start failure renders and recovers', (
+      tester,
+    ) async {
+      audio.startHook = () => throw StateError('mic gone');
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pumpAndSettle();
+      // A platform fault renders like the known cases, and the page is
+      // idle enough to retry.
+      expect(find.textContaining('mic gone'), findsOneWidget);
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+
+      audio.startHook = null;
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      expect(find.text('Listening…'), findsOneWidget);
+    });
+
+    testWidgets('mid-take engine failure surfaces and ends the take', (
+      tester,
+    ) async {
+      when(
+        () => bindings.streamFeed(any(), any()),
+      ).thenThrow(const TranscribeEngineException('xruns'));
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      audio.pushChunk(pcm16(1600));
+      // The teardown chain (subscription cancel, recorder stop) drains
+      // on real event-loop turns that settle does not await.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('xruns'), findsOneWidget);
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+      expect(driver.isListening, isFalse);
+    });
+
+    testWidgets('microphone stream error surfaces', (tester) async {
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      expect(find.text('Listening…'), findsOneWidget);
+      audio.pushError(StateError('mic died'));
+      // Same real-turn drain as above: the error teardown cancels the
+      // subscription before reporting.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('mic died'), findsOneWidget);
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+    });
+
+    testWidgets('stop failure renders and keeps the attempt', (
+      tester,
+    ) async {
+      audio.stopHook = () => throw StateError('stop stuck');
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      audio.pushChunk(pcm16(1600));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('midnight dreary'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.stop));
+      // The failing stop still drains subscription cancel first.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('stop stuck'), findsOneWidget);
+      expect(find.byIcon(Icons.mic), findsOneWidget);
+      // The attempt stays visible even though stopping failed.
+      expect(find.textContaining('midnight dreary'), findsOneWidget);
+    });
+
+    testWidgets('silent engine keeps listening without crashing', (
+      tester,
+    ) async {
+      when(() => bindings.streamText(any())).thenReturn('');
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await pumpPage(tester, driver);
+      await tester.tap(find.byIcon(Icons.mic));
+      await tester.pump();
+      audio.pushChunk(pcm16(1600));
+      await tester.pumpAndSettle();
+      // No speech recognized is not an error: the take stays open and
+      // no failure renders.
+      expect(find.text('Listening…'), findsOneWidget);
+      expect(find.byIcon(Icons.stop), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.stop));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 300)),
       );

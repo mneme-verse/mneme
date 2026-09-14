@@ -58,6 +58,12 @@ class _RecitationPageState extends State<RecitationPage> {
     _driver.onTranscript = (text) {
       unawaited(_cubit.onTranscript(text));
     };
+    // Mid-take engine or microphone failures tear the take down inside
+    // the driver; render them instead of freezing on Listening.
+    _driver.onError = (error) {
+      _cubit.stop();
+      if (mounted) setState(() => _error = '$error');
+    };
   }
 
   @override
@@ -67,8 +73,9 @@ class _RecitationPageState extends State<RecitationPage> {
     super.dispose();
   }
 
-  /// Starts a take; engine or permission failures render instead of
-  /// crashing.
+  /// Starts a take; failures render instead of crashing or freezing.
+  /// Unexpected driver failures (platform plugin errors, recorder
+  /// faults) render like the known permission and engine cases.
   Future<void> _start() async {
     setState(() => _error = null);
     _cubit.start();
@@ -82,13 +89,22 @@ class _RecitationPageState extends State<RecitationPage> {
       _cubit.stop();
       setState(() => _error = e.message);
       return;
+    } catch (e) {
+      _cubit.stop();
+      setState(() => _error = '$e');
+      return;
     }
     if (mounted) setState(() {});
   }
 
-  /// Stops the take, keeping the last attempt visible.
+  /// Stops the take, keeping the last attempt visible. A failing stop
+  /// still idles the cubit and renders instead of crashing.
   Future<void> _stop() async {
-    await _driver.stop();
+    try {
+      await _driver.stop();
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    }
     _cubit.stop();
     if (mounted) setState(() {});
   }
