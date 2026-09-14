@@ -94,12 +94,18 @@ void main(List<String> args) async {
 Map<String, String> _stageRuntimeLibraries(Uri outDir, Logger logger) {
   final stageDir = Directory.fromUri(outDir.resolve('staged/'))
     ..createSync(recursive: true);
+  // The staged directory lives under the scanned output directory:
+  // exclude it so reruns never index previously staged libraries.
   final entities = Directory.fromUri(outDir).listSync(
     recursive: true,
     followLinks: false,
   );
   final byName = <String, FileSystemEntity>{};
   for (final entity in entities) {
+    if (entity.path == stageDir.path ||
+        entity.path.startsWith('${stageDir.path}${Platform.pathSeparator}')) {
+      continue;
+    }
     byName[entity.path.split(Platform.pathSeparator).last] = entity;
   }
 
@@ -124,21 +130,26 @@ Map<String, String> _stageRuntimeLibraries(Uri outDir, Logger logger) {
   // Top library first: the bare dev-symlink name resolves to the
   // versioned bytes the loader actually maps.
   final topLink = byName['libtranscribe.so'];
-  if (topLink != null) {
-    staged['libtranscribe.so'] = stageBytes(
-      'libtranscribe.so',
-      readBytes(topLink),
-    );
-  }
-  // Siblings by DT_NEEDED name, read off the staged top library.
-  for (final needed in _neededLibraries('${stageDir.path}/libtranscribe.so')) {
+  if (topLink == null) return staged;
+  staged['libtranscribe.so'] = stageBytes(
+    'libtranscribe.so',
+    readBytes(topLink),
+  );
+  // Siblings to fixpoint: every staged library's own DT_NEEDED names
+  // join the queue, so multi-level chains (transcribe → ggml →
+  // ggml-cpu) all land in the bundle.
+  final queue = _neededLibraries('${stageDir.path}/libtranscribe.so');
+  while (queue.isNotEmpty) {
+    final needed = queue.removeLast();
     if (staged.containsKey(needed)) continue;
     final entity = byName[needed];
     if (entity == null) {
       logger.warning('Skipping system library $needed.');
       continue;
     }
-    staged[needed] = stageBytes(needed, readBytes(entity));
+    final path = stageBytes(needed, readBytes(entity));
+    staged[needed] = path;
+    queue.addAll(_neededLibraries(path));
   }
   return staged;
 }
