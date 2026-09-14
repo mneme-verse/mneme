@@ -89,6 +89,8 @@ void main() {
     });
   }
 
+  // Tests default to a fake lock: unit tests run without a platform
+  // binding, and the production lock is best-effort anyway.
   OnboardingCubit buildCubit(http.Client client, {DeviceWakeLock? wakeLock}) {
     return OnboardingCubit(
       resources: ResourceRepository(
@@ -101,7 +103,7 @@ void main() {
         manifestUrl: manifestUrl,
       ),
       speechModel: fakeSpeechModel,
-      wakeLock: wakeLock,
+      wakeLock: wakeLock ?? FakeWakeLock(),
     );
   }
 
@@ -291,6 +293,7 @@ void main() {
           manifestUrl: Uri.parse('https://example.test/manifest.json'),
         ),
         speechModel: fakeSpeechModel,
+        wakeLock: FakeWakeLock(),
       );
       final pending = cubit.selectLanguage('ru');
       addTearDown(() async {

@@ -15,6 +15,11 @@ abstract class DeviceWakeLock {
 }
 
 /// [DeviceWakeLock] backed by the wakelock_plus plugin.
+///
+/// Unit tests cover the lock protocol through fakes; this wrapper only
+/// forwards to platform channels, which need a device. The ignore markers
+/// match the existing convention for platform-bound code.
+// coverage:ignore-start
 class WakelockPlusDevice implements DeviceWakeLock {
   /// Creates the plugin-backed lock.
   const WakelockPlusDevice();
@@ -25,3 +30,4 @@ class WakelockPlusDevice implements DeviceWakeLock {
   @override
   Future<void> release() => WakelockPlus.disable();
 }
+// coverage:ignore-end

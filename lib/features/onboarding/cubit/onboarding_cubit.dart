@@ -7,6 +7,7 @@ import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
 import 'package:mneme/resources/wake_lock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 /// Phases of first-run resource installation.
 enum OnboardingPhase {
   /// The user is choosing a corpus language.
@@ -99,6 +100,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
   final DeviceWakeLock _wakeLock;
+  var _holdingLock = false;
   _OnboardingRun? _run;
 
   Future<SharedPreferences> _resolvePrefs() async =>
@@ -116,9 +118,12 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // that has no resource token yet. The old installer keeps running in
     // the background, but its emissions and cleanup no longer apply.
     // Balance the previous run's lock first: its finally will skip the
-    // release below once superseded, so exactly one acquire pairs with
-    // one release per settled run.
-    await _wakeLock.release();
+    // release below once superseded, so each settled run pairs one
+    // acquire with one release.
+    if (_holdingLock) {
+      await _wakeLock.release();
+      _holdingLock = false;
+    }
     _run?.token.cancel();
     await _run?.subscription?.cancel();
     final run = _run = _OnboardingRun(InstallCancelToken());
@@ -146,9 +151,15 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     );
 
     // Hold the device awake for the whole install: multi-hundred-megabyte
-    // downloads stall when the screen locks. Released in the finally
-    // below once this run settles.
-    await _wakeLock.acquire();
+    // downloads stall when the screen locks. Best-effort: onboarding must
+    // never fail because the lock is unavailable (desktop shells, broken
+    // plugins). Released in the finally below once this run settles.
+    try {
+      await _wakeLock.acquire();
+      _holdingLock = true;
+      // A lock that cannot be held is not an install failure; the
+      // transfer still resumes where it stalled.
+    } on Exception catch (_) {}
 
     try {
       final pack = await _manifestClient.packFor(language);
@@ -204,7 +215,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       if (identical(_run, run)) {
         await run.subscription?.cancel();
         _run = null;
-        await _wakeLock.release();
+        if (_holdingLock) {
+          await _wakeLock.release();
+          _holdingLock = false;
+        }
       }
     }
   }
