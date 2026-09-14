@@ -266,73 +266,159 @@ void main() {
       manifestGate.complete();
     });
 
-    test('a run superseded mid-acquire does not leak the lock', () async {
-      // Two gates pin the race: run1 blocks inside its first acquire
-      // while run2 parks at the manifest fetch (proving run2 owns the
-      // run slot). Releasing the acquire gate then forces run1 down the
-      // compensation path. Throwing releases prove every balance
-      // attempt is best-effort.
-      final acquireGate = Completer<void>();
-      final manifestGate = Completer<void>();
-      addTearDown(() {
-        if (!acquireGate.isCompleted) acquireGate.complete();
-        if (!manifestGate.isCompleted) manifestGate.complete();
-      });
-      final manifestBody = utf8.encode(
-        json.encode({
-          'ru': {
-            'file': 'ru.db.gz',
-            'name': 'Русский',
-            'size': corpusBytes.length,
-            'sha256': corpusSha256,
-            'version': '1.0+2',
-            'schema_version': 2,
+    test(
+      'a stale acquisition subsumed by the replacement keeps its lock',
+      () async {
+        // Two gates pin the race: run1 blocks inside its first acquire
+        // while run2 parks at the manifest fetch (proving run2 owns the
+        // run slot AND completed its own acquisition). Releasing the acquire
+        // gate then lands run1's late enable on top of run2's: compensating
+        // with a release would disable the replacement's active lock (the
+        // OS toggle is process-wide, not refcounted), so run1 must skip it.
+        // run2's own settle balances the toggle. Throwing releases prove
+        // every balance attempt is best-effort.
+        final acquireGate = Completer<void>();
+        final manifestGate = Completer<void>();
+        addTearDown(() {
+          if (!acquireGate.isCompleted) acquireGate.complete();
+          if (!manifestGate.isCompleted) manifestGate.complete();
+        });
+        final manifestBody = utf8.encode(
+          json.encode({
+            'ru': {
+              'file': 'ru.db.gz',
+              'name': 'Русский',
+              'size': corpusBytes.length,
+              'sha256': corpusSha256,
+              'version': '1.0+2',
+              'schema_version': 2,
+            },
+          }),
+        );
+        var manifestRequested = false;
+        final client = MockClient((request) async {
+          if (request.url.toString() == manifestUrl.toString()) {
+            manifestRequested = true;
+            await manifestGate.future;
+            return http.Response.bytes(manifestBody, 200);
+          }
+          if (request.url.toString() == fakeSpeechModel.url) {
+            return http.Response.bytes(modelBytes, 200);
+          }
+          return http.Response.bytes(corpusBytes, 200);
+        });
+        var acquires = 0;
+        final wakeLock = _GatedWakeLock(
+          () async {
+            acquires++;
+            if (acquires == 1) await acquireGate.future;
           },
-        }),
-      );
-      var manifestRequested = false;
-      final client = MockClient((request) async {
-        if (request.url.toString() == manifestUrl.toString()) {
-          manifestRequested = true;
-          await manifestGate.future;
-          return http.Response.bytes(manifestBody, 200);
+          releaseThrows: true,
+        );
+        final cubit = buildCubit(client, wakeLock: wakeLock);
+        addTearDown(cubit.close);
+        final first = cubit.selectLanguage('ru');
+        while (wakeLock.acquires < 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
         }
-        if (request.url.toString() == fakeSpeechModel.url) {
-          return http.Response.bytes(modelBytes, 200);
+        final second = cubit.selectLanguage('ru');
+        while (!manifestRequested) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
         }
-        return http.Response.bytes(corpusBytes, 200);
-      });
-      var acquires = 0;
-      final wakeLock = _GatedWakeLock(
-        () async {
-          acquires++;
-          if (acquires == 1) await acquireGate.future;
-        },
-        releaseThrows: true,
-      );
-      final cubit = buildCubit(client, wakeLock: wakeLock);
-      addTearDown(cubit.close);
-      final first = cubit.selectLanguage('ru');
-      while (wakeLock.acquires < 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      final second = cubit.selectLanguage('ru');
-      while (!manifestRequested) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-      }
-      print('DBG pre-gates A=${wakeLock.acquires} R=${wakeLock.releases}');
-      acquireGate.complete();
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      print('DBG post-acquire A=${wakeLock.acquires} R=${wakeLock.releases}');
-      manifestGate.complete();
-      await expectLater(
-        first,
-        throwsA(isA<InstallCanceledException>()),
-      );
-      await second;
-      expect(wakeLock.acquires, 2);
-      expect(wakeLock.releases, 3);
-    });
+        // run2's acquisition completed before the gate opens (its acquire
+        // precedes the manifest fetch in program order), so run1's late
+        // enable is subsumed: balance + settle only, no compensation.
+        expect(wakeLock.acquires, 2);
+        acquireGate.complete();
+        manifestGate.complete();
+        await expectLater(
+          first,
+          throwsA(isA<InstallCanceledException>()),
+        );
+        await second;
+        expect(wakeLock.acquires, 2);
+        expect(wakeLock.releases, 2);
+      },
+    );
+
+    test(
+      'a superseded acquire still compensates before any replacement',
+      () async {
+        // run2 is parked inside its own acquire (before the manifest fetch),
+        // so no replacement enable subsumes run1's late acquisition: run1
+        // must give it back. Balance + compensation + settle = 3.
+        final firstGate = Completer<void>();
+        final secondGate = Completer<void>();
+        final manifestGate = Completer<void>();
+        addTearDown(() {
+          if (!firstGate.isCompleted) firstGate.complete();
+          if (!secondGate.isCompleted) secondGate.complete();
+          if (!manifestGate.isCompleted) manifestGate.complete();
+        });
+        final manifestBody = utf8.encode(
+          json.encode({
+            'ru': {
+              'file': 'ru.db.gz',
+              'name': 'Русский',
+              'size': corpusBytes.length,
+              'sha256': corpusSha256,
+              'version': '1.0+2',
+              'schema_version': 2,
+            },
+          }),
+        );
+        var manifestRequested = false;
+        final client = MockClient((request) async {
+          if (request.url.toString() == manifestUrl.toString()) {
+            manifestRequested = true;
+            await manifestGate.future;
+            return http.Response.bytes(manifestBody, 200);
+          }
+          if (request.url.toString() == fakeSpeechModel.url) {
+            return http.Response.bytes(modelBytes, 200);
+          }
+          return http.Response.bytes(corpusBytes, 200);
+        });
+        var acquires = 0;
+        final wakeLock = _GatedWakeLock(
+          () async {
+            // Snapshot per call: a resumed call must not re-read the counter
+            // after its await, or a later call's increment parks it again.
+            final call = ++acquires;
+            if (call == 1) await firstGate.future;
+            if (call == 2) await secondGate.future;
+          },
+          releaseThrows: true,
+        );
+        final cubit = buildCubit(client, wakeLock: wakeLock);
+        addTearDown(cubit.close);
+        final first = cubit.selectLanguage('ru');
+        while (wakeLock.acquires < 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        final second = cubit.selectLanguage('ru');
+        while (wakeLock.acquires < 2) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        // run2 owns the slot but has not acquired yet: run1 compensates.
+        firstGate.complete();
+        while (wakeLock.releases < 2) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        secondGate.complete();
+        while (!manifestRequested) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        manifestGate.complete();
+        await expectLater(
+          first,
+          throwsA(isA<InstallCanceledException>()),
+        );
+        await second;
+        expect(wakeLock.acquires, 2);
+        expect(wakeLock.releases, 3);
+      },
+    );
 
     test('a failed install still releases the lock', () async {
       final wakeLock = FakeWakeLock();

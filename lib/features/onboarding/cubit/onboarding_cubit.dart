@@ -101,6 +101,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final SharedPreferences? _prefs;
   final DeviceWakeLock _wakeLock;
   _OnboardingRun? _run;
+  // Completed wake-lock acquisitions. The OS lock is a process-wide
+  // idempotent toggle, not a refcount: a superseded run must not release
+  // an acquisition a newer run already subsumed with its own enable.
+  int _wakeEpoch = 0;
 
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
@@ -149,17 +153,21 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // downloads stall when the screen locks. Best-effort: onboarding must
     // never fail because the lock is unavailable (desktop shells, broken
     // plugins).
+    final wakeEpoch = _wakeEpoch;
     try {
       await _wakeLock.acquire();
-      if (!identical(_run, run)) {
+      _wakeEpoch++;
+      if (!identical(_run, run) && _wakeEpoch == wakeEpoch + 1) {
         // Superseded mid-acquire: give the acquisition back at once.
-        // The owning run manages its own lifecycle from here.
+        // Skipped when a newer run already completed its own acquisition:
+        // its enable subsumes ours, and a release here would drop the
+        // replacement run's lock. The owning run manages its own
+        // lifecycle from here.
         await _releaseLock();
       }
       // A lock that cannot be held is not an install failure; the
       // transfer still resumes where it stalled.
     } on Exception catch (_) {}
-
     try {
       final pack = await _manifestClient.packFor(language);
       if (run.token.isCanceled) throw InstallCanceledException(pack.file);
