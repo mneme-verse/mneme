@@ -152,7 +152,11 @@ class TranscribeBindings {
   /// Flutter Linux bundle `lib` directory beside the executable.
   static List<String> libraryCandidates() {
     const base = 'libtranscribe.so';
+    // Only Linux resolves a bundle directory; other platforms probe the
+    // bare name. Unit tests run on Linux, so this branch is excluded.
+    // coverage:ignore-start
     if (!Platform.isLinux) return [base];
+    // coverage:ignore-end
     final bundleLib = p.join(p.dirname(Platform.resolvedExecutable), 'lib');
     return [base, p.join(bundleLib, base)];
   }

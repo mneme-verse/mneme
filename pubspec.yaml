@@ -2,6 +2,8 @@ name: mneme
 description: Open-source mobile app for memorizing poetry using Spaced Repetition and Offline Speech Recognition
 version: 0.1.0+1
 publish_to: none
+workspace:
+  - hook
 
 environment:
   # Floors match the committed lockfile (dart >=3.11.0, flutter >=3.38.4):

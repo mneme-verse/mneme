@@ -3,6 +3,7 @@
 # targets so the engine library is always beside the app bundle.
 name: mneme_native_hook
 publish_to: none
+resolution: workspace
 
 environment:
   sdk: ^3.11.0

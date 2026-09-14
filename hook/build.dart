@@ -14,9 +14,7 @@ import 'package:native_toolchain_cmake/native_toolchain_cmake.dart';
 /// in the pinned submodule worktree.
 void main(List<String> args) async {
   await build(args, (input, output) async {
-    if (input.config.code.targetOS != OS.linux) return;
     final logger = Logger('mneme')
-      ..level = Level.INFO
       ..onRecord.listen((record) => stderr.writeln(record.message));
     final builder = CMakeBuilder.create(
       name: 'transcribe',
