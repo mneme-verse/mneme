@@ -117,6 +117,7 @@ void main() {
     Future<http.StreamedResponse> rangeHandler(
       http.BaseRequest request, {
       bool honorRange = true,
+      int rangeSkew = 0,
     }) async {
       requests++;
       final range = request.headers['Range'];
@@ -129,6 +130,10 @@ void main() {
           Stream.value(payload.sublist(start)),
           206,
           contentLength: payload.length - start,
+          headers: {
+            'content-range':
+                'bytes ${start + rangeSkew}-${payload.length - 1}/${payload.length}',
+          },
         );
       }
       return _bytesResponse(payload);
@@ -158,6 +163,23 @@ void main() {
       final installed = await installer.install(
         'clean.bin',
         Uri.parse(packUrl('clean.bin')),
+        shaOf(payload),
+      );
+
+      expect(installed.readAsBytesSync(), payload);
+      expect(requests, 2);
+    });
+
+    test('a mismatched range restarts instead of corrupting', () async {
+      handler = (request) => rangeHandler(request, rangeSkew: 7);
+      final half = payload.length ~/ 2;
+      File(
+        '${dir.path}/skewed.bin.part',
+      ).writeAsBytesSync(payload.sublist(0, half));
+
+      final installed = await installer.install(
+        'skewed.bin',
+        Uri.parse(packUrl('skewed.bin')),
         shaOf(payload),
       );
 

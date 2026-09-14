@@ -66,7 +66,9 @@ class ResourceState {
 
 /// Tracks and installs offline resources: locked speech models and corpus
 /// packs. All installs are cancellable; cancellation returns the resource
-/// to [ResourcePhase.notInstalled] without leaving partial files behind.
+/// to [ResourcePhase.notInstalled] while keeping the partial download so
+/// the next attempt resumes where it stalled (verified by hash before
+/// install, so a corrupt prefix can never ship).
 class ResourceRepository {
   ResourceRepository({
     required Directory modelDir,

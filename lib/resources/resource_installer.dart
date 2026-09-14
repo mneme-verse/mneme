@@ -157,8 +157,15 @@ class ResourceInstaller {
         );
       }
       if (response.statusCode == 200 && resumeFrom > 0) {
-        // The server ignored Range: the fed prefix is useless, restart.
-        await response.stream.drain<void>();
+        // The server ignored Range: cancel the redundant body at once
+        // instead of draining hundreds of megabytes, then restart.
+        await response.stream.listen(null).cancel();
+        throw const _RestartCleanly();
+      }
+      if (response.statusCode == 206 && !_rangeStartsAt(response, resumeFrom)) {
+        // A proxy answered a different slice than requested: appending
+        // it would waste the transfer and fail the hash at the end.
+        await response.stream.listen(null).cancel();
         throw const _RestartCleanly();
       }
       total =
@@ -226,6 +233,15 @@ class ResourceInstaller {
       ..maxRedirects = 5;
     if (from > 0) request.headers['Range'] = 'bytes=$from-';
     return _client.send(request);
+  }
+
+  /// Whether a 206 response continues at [from], per its Content-Range.
+  /// A missing or mismatched range means a proxy answered a different
+  /// slice: appending it would corrupt the file and fail the hash.
+  bool _rangeStartsAt(http.StreamedResponse response, int from) {
+    final header = response.headers['content-range'];
+    if (header == null) return false;
+    return header.startsWith('bytes $from-');
   }
 
   /// Length of a resumable prefix, zero when absent.

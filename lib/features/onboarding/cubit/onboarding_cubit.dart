@@ -100,7 +100,6 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
   final DeviceWakeLock _wakeLock;
-  var _holdingLock = false;
   _OnboardingRun? _run;
 
   Future<SharedPreferences> _resolvePrefs() async =>
@@ -117,13 +116,9 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // A new run supersedes any previous one, including a manifest fetch
     // that has no resource token yet. The old installer keeps running in
     // the background, but its emissions and cleanup no longer apply.
-    // Balance the previous run's lock first: its finally will skip the
-    // release below once superseded, so each settled run pairs one
-    // acquire with one release.
-    if (_holdingLock) {
-      await _wakeLock.release();
-      _holdingLock = false;
-    }
+    // Balance a previous run's lock: releases are idempotent, and the
+    // superseded run's finally skips its own cleanup.
+    if (_run != null) await _releaseLock();
     _run?.token.cancel();
     await _run?.subscription?.cancel();
     final run = _run = _OnboardingRun(InstallCancelToken());
@@ -153,10 +148,14 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // Hold the device awake for the whole install: multi-hundred-megabyte
     // downloads stall when the screen locks. Best-effort: onboarding must
     // never fail because the lock is unavailable (desktop shells, broken
-    // plugins). Released in the finally below once this run settles.
+    // plugins).
     try {
       await _wakeLock.acquire();
-      _holdingLock = true;
+      if (!identical(_run, run)) {
+        // Superseded mid-acquire: give the acquisition back at once.
+        // The owning run manages its own lifecycle from here.
+        await _releaseLock();
+      }
       // A lock that cannot be held is not an install failure; the
       // transfer still resumes where it stalled.
     } on Exception catch (_) {}
@@ -215,10 +214,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       if (identical(_run, run)) {
         await run.subscription?.cancel();
         _run = null;
-        if (_holdingLock) {
-          await _wakeLock.release();
-          _holdingLock = false;
-        }
+        await _releaseLock();
       }
     }
   }
@@ -246,7 +242,21 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   Future<void> close() async {
     _run?.token.cancel();
     await _run?.subscription?.cancel();
+    // A run stuck where the token never lands (manifest fetch) would
+    // otherwise hold the OS lock past disposal.
+    await _releaseLock();
     return super.close();
+  }
+
+  /// Releases the OS wake lock without ever failing. Releases are
+  /// idempotent, so balancing a previous run, compensating a late
+  /// acquisition, settling, and teardown may each release freely:
+  /// every granted acquisition is paired, and stray releases are safe.
+  Future<void> _releaseLock() async {
+    try {
+      await _wakeLock.release();
+      // A lock that cannot be released is not an install failure.
+    } on Exception catch (_) {}
   }
 }
 
