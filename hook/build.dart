@@ -143,7 +143,7 @@ Map<String, String> _stageRuntimeLibraries(Uri outDir, Logger logger) {
   return staged;
 }
 
-/// DT_NEEDED basenames of [library] via readelf.
+/// DT_NEEDED base names of [library] via readelf.
 List<String> _neededLibraries(String library) {
   final result = Process.runSync('readelf', ['-d', library]);
   if (result.exitCode != 0) {

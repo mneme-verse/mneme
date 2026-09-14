@@ -134,7 +134,9 @@ class TranscribeBindings {
   /// Opens the platform library; throws [ArgumentError] when absent from
   /// every candidate location.
   static ffi.DynamicLibrary _openLibrary() {
-    ArgumentError? last;
+    // libraryCandidates is never empty; the initial error only survives
+    // if it were.
+    var last = ArgumentError('no library candidates');
     for (final candidate in libraryCandidates()) {
       try {
         return ffi.DynamicLibrary.open(candidate);
@@ -145,7 +147,7 @@ class TranscribeBindings {
         last = e;
       }
     }
-    throw last ?? ArgumentError('no library candidates');
+    throw last;
   }
 
   /// Library locations in probe order: the platform path first, then the
