@@ -158,7 +158,7 @@ void main() {
       addTearDown(driver.dispose);
       when(
         () => bindings.streamFeed(any(), any()),
-      ).thenThrow(const TranscribeEngineException('xruns'));
+      ).thenThrow(const TranscribeEngineException('overrun fault'));
       await driver.start();
       audio
         ..pushChunk(pcm16([1, 2, 3, 4]))

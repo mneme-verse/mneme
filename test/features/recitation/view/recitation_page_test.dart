@@ -239,7 +239,7 @@ void main() {
     ) async {
       when(
         () => bindings.streamFeed(any(), any()),
-      ).thenThrow(const TranscribeEngineException('xruns'));
+      ).thenThrow(const TranscribeEngineException('overrun fault'));
       final driver = openDriver();
       addTearDown(driver.dispose);
       await pumpPage(tester, driver);
@@ -252,7 +252,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 300)),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('xruns'), findsOneWidget);
+      expect(find.textContaining('overrun fault'), findsOneWidget);
       expect(find.byIcon(Icons.mic), findsOneWidget);
       expect(driver.isListening, isFalse);
     });
