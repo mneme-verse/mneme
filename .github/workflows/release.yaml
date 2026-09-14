@@ -175,10 +175,13 @@ jobs:
           fi
           ls -la build/app/outputs/flutter-apk/
           # Plain-named native libraries must survive packaging: a missing
-          # entry means the engine cannot load on device.
+          # entry means the engine cannot load on device. Herestrings, not
+          # a pipe: grep -q closing early on a pipe can SIGPIPE unzip
+          # under pipefail.
           apk=$(ls build/app/outputs/flutter-apk/app-production-release.apk)
+          apk_contents=$(unzip -l "$apk")
           for lib in libtranscribe.so libggml.so libggml-base.so libggml-cpu.so; do
-            unzip -l "$apk" | grep -q "/$lib$" || { echo "::error::APK is missing $lib"; exit 1; }
+            grep -q "/$lib$" <<< "$apk_contents" || { echo "::error::APK is missing $lib"; exit 1; }
           done
           echo "APK native libraries verified."
       - name: 🚀 Publish to GitHub Release
