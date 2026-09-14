@@ -48,7 +48,7 @@ jobs:
           submodules: recursive
 
       - name: 🤖 Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: 🗣️ Build transcribe.cpp for arm64
         run: |
