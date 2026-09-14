@@ -1,0 +1,16 @@
+# Build hook compiling the transcribe.cpp shared library for host builds.
+# Runs on `flutter run` / `flutter build` / `flutter test` for desktop
+# targets so the engine library is always beside the app bundle.
+name: mneme_native_hook
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  code_assets: ">=2.0.0 <3.0.0"
+  hooks: ^2.2.0
+  logging: ^1.3.0
+  native_toolchain_cmake: ^0.3.2
+  path: ^1.9.1

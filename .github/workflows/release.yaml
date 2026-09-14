@@ -64,10 +64,30 @@ jobs:
             -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
             -DTRANSCRIBE_BUILD_TOOLS=OFF > /tmp/transcribe-cmake.log 2>&1
           cmake --build /tmp/transcribe-android -j "$(nproc)" > /tmp/transcribe-build.log 2>&1
-          lib=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
-          test -n "$lib" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          cp "$lib" android/app/src/main/jniLibs/arm64-v8a/
+          # libtranscribe.so links ggml siblings by DT_NEEDED versioned
+          # names, and those siblings may link further bundled libraries:
+          # stage the top library plus the transitive DT_NEEDED closure
+          # found in the build tree. Anything unresolvable is a system
+          # library. Bundling only the top library fails at dlopen time.
+          top=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
+          test -n "$top" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
+          mkdir -p /tmp/transcribe-jni android/app/src/main/jniLibs/arm64-v8a
+          cp -L "$top" /tmp/transcribe-jni/libtranscribe.so
+          staged="libtranscribe.so"
+          queue=$(readelf -d /tmp/transcribe-jni/libtranscribe.so | grep '(NEEDED)' | grep -o '\[lib[^]]*\]' | tr -d '[]')
+          while [ -n "$queue" ]; do
+            next=""
+            for name in $queue; do
+              case " $staged " in *" $name "*) continue;; esac
+              src=$(find /tmp/transcribe-android -name "$name" | head -n 1)
+              if [ -z "$src" ]; then echo "system library: $name"; continue; fi
+              cp -L "$src" "/tmp/transcribe-jni/$name"
+              staged="$staged $name"
+              next="$next $(readelf -d "/tmp/transcribe-jni/$name" | grep '(NEEDED)' | grep -o '\[lib[^]]*\]' | tr -d '[]')"
+            done
+            queue="$next"
+          done
+          cp /tmp/transcribe-jni/*.so* android/app/src/main/jniLibs/arm64-v8a/
           ls -la android/app/src/main/jniLibs/arm64-v8a/
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
@@ -129,6 +149,9 @@ jobs:
           ANDROID_KEYSTORE_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASS }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ env.KEY_KEY_PASS }}
+          # The NDK step above already staged arm64 libs in jniLibs; skip
+          # the host hook compile.
+          MNEME_SKIP_NATIVE_HOOK: '1'
         run: |
           set +e
           flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 --android-project-arg=shrink=false > /tmp/apk.log 2>&1
@@ -141,6 +164,13 @@ jobs:
             exit $code
           fi
           ls -la build/app/outputs/flutter-apk/
+          # Versioned ggml siblings must survive packaging: a missing
+          # entry means the engine cannot load on device.
+          apk=$(ls build/app/outputs/flutter-apk/app-production-release.apk)
+          for lib in libtranscribe.so libggml.so.0 libggml-base.so.0 libggml-cpu.so.0; do
+            unzip -l "$apk" | grep -q "$lib" || { echo "::error::APK is missing $lib"; exit 1; }
+          done
+          echo "APK native libraries verified."
       - name: 🚀 Publish to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
