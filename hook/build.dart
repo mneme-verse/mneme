@@ -135,9 +135,8 @@ Map<String, String> _stageRuntimeLibraries(Uri outDir, Logger logger) {
     'libtranscribe.so',
     readBytes(topLink),
   );
-  // Siblings to fixpoint: every staged library's own DT_NEEDED names
-  // join the queue, so multi-level chains (transcribe → ggml →
-  // ggml-cpu) all land in the bundle.
+  // Siblings join transitively: every staged library's own DT_NEEDED
+  // names join the queue, so multi-level chains all land in the bundle.
   final queue = _neededLibraries('${stageDir.path}/libtranscribe.so');
   while (queue.isNotEmpty) {
     final needed = queue.removeLast();
