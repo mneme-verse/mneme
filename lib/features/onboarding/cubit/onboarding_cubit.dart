@@ -101,10 +101,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   final SharedPreferences? _prefs;
   final DeviceWakeLock _wakeLock;
   _OnboardingRun? _run;
-  // Completed wake-lock acquisitions. The OS lock is a process-wide
-  // idempotent toggle, not a refcount: a superseded run must not release
-  // an acquisition a newer run already subsumed with its own enable.
-  int _wakeEpoch = 0;
+  // Run whose enable currently holds the process-wide wake toggle ON.
+  // The OS lock is not reference-counted: a superseded run must only undo
+  // its own enable when nobody holds the toggle, never a replacement's.
+  _OnboardingRun? _wakeOwner;
 
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
@@ -122,13 +122,14 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // the background, but its emissions and cleanup no longer apply.
     // Balance a previous run's lock: releases are idempotent, and the
     // superseded run's finally skips its own cleanup.
-    if (_run != null) await _releaseLock();
+    if (_run != null) {
+      await _releaseLock();
+      _wakeOwner = null;
+    }
     _run?.token.cancel();
     await _run?.subscription?.cancel();
     final run = _run = _OnboardingRun(InstallCancelToken());
     run.subscription = _resources.states.listen((update) {
-      // Mirror byte progress into the installing state. Stale runs and
-      // post-completion events are ignored by identity and phase.
       if (!identical(_run, run)) return;
       if (state.phase != OnboardingPhase.installing) return;
       emit(
@@ -153,16 +154,14 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // downloads stall when the screen locks. Best-effort: onboarding must
     // never fail because the lock is unavailable (desktop shells, broken
     // plugins).
-    final wakeEpoch = _wakeEpoch;
     try {
       await _wakeLock.acquire();
-      _wakeEpoch++;
-      if (!identical(_run, run) && _wakeEpoch == wakeEpoch + 1) {
-        // Superseded mid-acquire: give the acquisition back at once.
-        // Skipped when a newer run already completed its own acquisition:
-        // its enable subsumes ours, and a release here would drop the
-        // replacement run's lock. The owning run manages its own
-        // lifecycle from here.
+      if (identical(_run, run)) {
+        _wakeOwner = run;
+      } else if (_wakeOwner == null) {
+        // Superseded with nobody holding the toggle: undo the stale
+        // enable. When a newer run holds it, this enable is subsumed and
+        // releasing here would drop the replacement run's lock.
         await _releaseLock();
       }
       // A lock that cannot be held is not an install failure; the
@@ -222,7 +221,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       if (identical(_run, run)) {
         await run.subscription?.cancel();
         _run = null;
-        await _releaseLock();
+        if (_wakeOwner == run) {
+          await _releaseLock();
+          _wakeOwner = null;
+        }
       }
     }
   }
@@ -253,13 +255,14 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // A run stuck where the token never lands (manifest fetch) would
     // otherwise hold the OS lock past disposal.
     await _releaseLock();
+    _wakeOwner = null;
     return super.close();
   }
 
   /// Releases the OS wake lock without ever failing. Releases are
-  /// idempotent, so balancing a previous run, compensating a late
-  /// acquisition, settling, and teardown may each release freely:
-  /// every granted acquisition is paired, and stray releases are safe.
+  /// idempotent: balancing, owner settle, and teardown may each release,
+  /// and stray releases are safe no-ops. A superseded enable subsumed by
+  /// a newer owner's is deliberately left unpaired.
   Future<void> _releaseLock() async {
     try {
       await _wakeLock.release();

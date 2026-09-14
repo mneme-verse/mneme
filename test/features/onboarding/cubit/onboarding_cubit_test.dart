@@ -273,10 +273,10 @@ void main() {
         // while run2 parks at the manifest fetch (proving run2 owns the
         // run slot AND completed its own acquisition). Releasing the acquire
         // gate then lands run1's late enable on top of run2's: compensating
-        // with a release would disable the replacement's active lock (the
-        // OS toggle is process-wide, not refcounted), so run1 must skip it.
-        // run2's own settle balances the toggle. Throwing releases prove
-        // every balance attempt is best-effort.
+        // with a release would disable the replacement's active lock: the
+        // OS toggle is process-wide, not reference-counted, so run1 must
+        // skip it. run2's own settle balances the toggle. Throwing
+        // releases prove every balance attempt is best-effort.
         final acquireGate = Completer<void>();
         final manifestGate = Completer<void>();
         addTearDown(() {
@@ -415,6 +415,46 @@ void main() {
           throwsA(isA<InstallCanceledException>()),
         );
         await second;
+        expect(wakeLock.acquires, 2);
+        expect(wakeLock.releases, 3);
+      },
+    );
+
+    test(
+      'a stale acquisition landing after the replacement settled compensates',
+      () async {
+        // run1 parks inside its first acquire while run2 runs the full
+        // install to completion (releasing the toggle at settle). run1's
+        // late enable then lands on an unheld toggle: nobody owns it, so
+        // run1 must undo it instead of leaking the lock. Balance + settle
+        // + compensation = 3.
+        final acquireGate = Completer<void>();
+        addTearDown(() {
+          if (!acquireGate.isCompleted) acquireGate.complete();
+        });
+        var acquires = 0;
+        final wakeLock = _GatedWakeLock(
+          () async {
+            final call = ++acquires;
+            if (call == 1) await acquireGate.future;
+          },
+          releaseThrows: true,
+        );
+        final cubit = buildCubit(fakeClient(), wakeLock: wakeLock);
+        addTearDown(cubit.close);
+        final first = cubit.selectLanguage('ru');
+        while (wakeLock.acquires < 1) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+        final second = cubit.selectLanguage('ru');
+        await second;
+        expect(wakeLock.acquires, 2);
+        expect(wakeLock.releases, 2);
+        acquireGate.complete();
+        await expectLater(
+          first,
+          throwsA(isA<InstallCanceledException>()),
+        );
         expect(wakeLock.acquires, 2);
         expect(wakeLock.releases, 3);
       },
