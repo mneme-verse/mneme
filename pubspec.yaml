@@ -14,8 +14,8 @@ environment:
 dependencies:
   bloc: ^9.2.0
   crypto: ^3.0.7
-  drift: ^2.20.3
-  drift_flutter: ^0.2.2
+  drift: ^2.34.4
+  drift_flutter: ^0.3.1
   ffi: ^2.1.0
   flutter:
     sdk: flutter
@@ -29,8 +29,8 @@ dependencies:
   path_provider: ^2.1.5
   record: ^7.1.1
   shared_preferences: ^2.5.4
-  sqlite3: ^2.9.0
-  sqlite3_flutter_libs: ^0.5.41
+  sqlite3: ^3.6.0
+  sqlite3_flutter_libs: ^0.6.0+eol
   unorm_dart: 0.3.2
 
 
@@ -39,7 +39,7 @@ dev_dependencies:
   args: ^2.6.0
   bloc_test: ^10.0.0
   build_runner: ^2.4.13
-  drift_dev: ^2.20.3
+  drift_dev: ^2.34.0
   flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
