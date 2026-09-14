@@ -117,6 +117,70 @@ void main() {
       expect(wakeLock.releases, 1);
     });
 
+    test('a superseding run balances the previous lock', () async {
+      final requested = Completer<void>();
+      final gate = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      final manifestBody = utf8.encode(
+        json.encode({
+          'ru': {
+            'file': 'ru.db.gz',
+            'name': 'Русский',
+            'size': corpusBytes.length,
+            'sha256': corpusSha256,
+            'version': '1.0+2',
+            'schema_version': 2,
+          },
+        }),
+      );
+      final client = MockClient((request) async {
+        if (request.url.toString() == manifestUrl.toString()) {
+          if (!requested.isCompleted) requested.complete();
+          await gate.future;
+          return http.Response.bytes(manifestBody, 200);
+        }
+        if (request.url.toString() == fakeSpeechModel.url) {
+          return http.Response.bytes(modelBytes, 200);
+        }
+        return http.Response.bytes(corpusBytes, 200);
+      });
+      final wakeLock = FakeWakeLock();
+      final cubit = buildCubit(client, wakeLock: wakeLock);
+      addTearDown(cubit.close);
+      final first = cubit.selectLanguage('ru');
+      await requested.future;
+      final second = cubit.selectLanguage('ru');
+      gate.complete();
+      await expectLater(
+        first,
+        throwsA(isA<InstallCanceledException>()),
+      );
+      await second;
+      expect(wakeLock.acquires, 2);
+      expect(wakeLock.releases, 2);
+    });
+
+    test('the default lock degrades gracefully without channels', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final cubit = OnboardingCubit(
+        resources: ResourceRepository(
+          modelDir: _tempDir('models'),
+          corpusDir: _tempDir('corpora'),
+          client: fakeClient(),
+        ),
+        manifestClient: CorpusManifestClient(
+          client: fakeClient(),
+          manifestUrl: manifestUrl,
+        ),
+        speechModel: fakeSpeechModel,
+      );
+      addTearDown(cubit.close);
+      await cubit.selectLanguage('ru');
+      expect(cubit.state.phase, OnboardingPhase.completed);
+    });
+
     test('a failed install still releases the lock', () async {
       final wakeLock = FakeWakeLock();
       final cubit = buildCubit(
