@@ -266,6 +266,38 @@ void main() {
       manifestGate.complete();
     });
 
+    test('close during a pending acquire leaves the toggle off', () async {
+      // The run parks inside acquire, then the cubit closes: the run is
+      // cleared synchronously, so the late enable resumes stale (dead
+      // token, no ownership) and undoes itself instead of resurrecting
+      // the lock past disposal. Teardown release + compensation = 2.
+      final acquireGate = Completer<void>();
+      addTearDown(() {
+        if (!acquireGate.isCompleted) acquireGate.complete();
+      });
+      final wakeLock = _GatedWakeLock(
+        () => acquireGate.future,
+        releaseThrows: true,
+      );
+      final cubit = buildCubit(fakeClient(), wakeLock: wakeLock);
+      final pending = cubit.selectLanguage('ru');
+      addTearDown(() async {
+        await pending.catchError((_) {});
+      });
+      while (wakeLock.acquires < 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      await cubit.close();
+      expect(wakeLock.releases, 1);
+      acquireGate.complete();
+      await expectLater(
+        pending,
+        throwsA(isA<InstallCanceledException>()),
+      );
+      expect(wakeLock.acquires, 1);
+      expect(wakeLock.releases, 2);
+    });
+
     test(
       'a stale acquisition subsumed by the replacement keeps its lock',
       () async {
@@ -425,9 +457,9 @@ void main() {
       () async {
         // run1 parks inside its first acquire while run2 runs the full
         // install to completion (releasing the toggle at settle). run1's
-        // late enable then lands on an unheld toggle: nobody owns it, so
-        // run1 must undo it instead of leaking the lock. Balance + settle
-        // + compensation = 3.
+        // late enable then lands on a toggle nobody holds, so run1 must
+        // undo it instead of leaking the lock. Balance + settle +
+        // compensation = 3.
         final acquireGate = Completer<void>();
         addTearDown(() {
           if (!acquireGate.isCompleted) acquireGate.complete();

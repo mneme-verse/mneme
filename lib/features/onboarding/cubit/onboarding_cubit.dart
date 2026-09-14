@@ -120,13 +120,16 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // A new run supersedes any previous one, including a manifest fetch
     // that has no resource token yet. The old installer keeps running in
     // the background, but its emissions and cleanup no longer apply.
+    // Cancel first, synchronously: a predecessor parked in acquire sees
+    // the dead token the moment it resumes, even while this run awaits
+    // the balance below. Token liveness therefore implies currency.
+    _run?.token.cancel();
     // Balance a previous run's lock: releases are idempotent, and the
     // superseded run's finally skips its own cleanup.
     if (_run != null) {
       await _releaseLock();
       _wakeOwner = null;
     }
-    _run?.token.cancel();
     await _run?.subscription?.cancel();
     final run = _run = _OnboardingRun(InstallCancelToken());
     run.subscription = _resources.states.listen((update) {
@@ -156,12 +159,12 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // plugins).
     try {
       await _wakeLock.acquire();
-      if (identical(_run, run)) {
+      if (!run.token.isCanceled && identical(_run, run)) {
         _wakeOwner = run;
       } else if (_wakeOwner == null) {
-        // Superseded with nobody holding the toggle: undo the stale
-        // enable. When a newer run holds it, this enable is subsumed and
-        // releasing here would drop the replacement run's lock.
+        // Stale enable on a toggle nobody holds: undo it. A held toggle
+        // means a newer run subsumed this enable; releasing here would
+        // drop the replacement run's lock.
         await _releaseLock();
       }
       // A lock that cannot be held is not an install failure; the
@@ -250,12 +253,17 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   @override
   Future<void> close() async {
-    _run?.token.cancel();
-    await _run?.subscription?.cancel();
+    // Clear synchronously before awaiting teardown: a run still parked in
+    // acquire must resume as stale (dead token, no ownership) instead of
+    // treating itself as current and resurrecting the lock past disposal.
+    final run = _run;
+    _run = null;
+    _wakeOwner = null;
+    run?.token.cancel();
+    await run?.subscription?.cancel();
     // A run stuck where the token never lands (manifest fetch) would
     // otherwise hold the OS lock past disposal.
     await _releaseLock();
-    _wakeOwner = null;
     return super.close();
   }
 
