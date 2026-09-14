@@ -101,9 +101,10 @@ Map<String, String> _stageRuntimeLibraries(Uri outDir, Logger logger) {
     followLinks: false,
   );
   final byName = <String, FileSystemEntity>{};
+  final stagePath = p.normalize(stageDir.path);
   for (final entity in entities) {
-    if (entity.path == stageDir.path ||
-        entity.path.startsWith('${stageDir.path}${Platform.pathSeparator}')) {
+    // p.isWithin is separator-safe; the trailing-separator form is not.
+    if (entity.path == stagePath || p.isWithin(stagePath, entity.path)) {
       continue;
     }
     byName[entity.path.split(Platform.pathSeparator).last] = entity;
