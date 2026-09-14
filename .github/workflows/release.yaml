@@ -140,6 +140,9 @@ jobs:
           ANDROID_KEYSTORE_ALIAS: ${{ env.KEY_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASS }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ env.KEY_KEY_PASS }}
+          # The NDK step above already staged arm64 libs in jniLibs; skip
+          # the host hook compile.
+          MNEME_SKIP_NATIVE_HOOK: '1'
         run: |
           set +e
           flutter build apk --release --flavor production -t lib/main_production.dart --target-platform android-arm64 --android-project-arg=shrink=false > /tmp/apk.log 2>&1

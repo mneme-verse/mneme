@@ -20,6 +20,10 @@ import 'package:path/path.dart' as p;
 /// hook output directory, never in the pinned submodule worktree.
 void main(List<String> args) async {
   await build(args, (input, output) async {
+    // Release APKs carry NDK-built libraries in jniLibs (the release
+    // workflow sets MNEME_SKIP_NATIVE_HOOK); the host compile would
+    // only waste release minutes.
+    if (Platform.environment['MNEME_SKIP_NATIVE_HOOK'] == '1') return;
     final logger = Logger('mneme')
       ..onRecord.listen((record) => stderr.writeln(record.message));
     if (input.config.code.targetOS != OS.linux) return;
