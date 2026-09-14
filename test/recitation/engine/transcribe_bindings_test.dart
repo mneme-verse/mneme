@@ -74,6 +74,12 @@ void main() {
       final candidates = TranscribeBindings.libraryCandidates();
       expect(candidates.first, 'libtranscribe.so');
       expect(candidates.toSet(), hasLength(candidates.length));
+      if (Platform.isLinux) {
+        expect(candidates, hasLength(2));
+        expect(candidates[1], endsWith('lib/libtranscribe.so'));
+      } else {
+        expect(candidates, ['libtranscribe.so']);
+      }
     });
 
     test('default constructor surfaces a missing library', () {

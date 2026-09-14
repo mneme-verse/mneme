@@ -64,11 +64,11 @@ jobs:
           fi
           find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 3
 
-      - name: 📤 Upload arm64 lib
+      - name: 📤 Upload arm64 libs
         uses: actions/upload-artifact@v4
         with:
           name: libtranscribe-arm64
-          path: /tmp/transcribe-android/**/libtranscribe.so
+          path: /tmp/transcribe-android/**/lib*.so*
           if-no-files-found: error
 
   linux-lib:

@@ -64,10 +64,21 @@ jobs:
             -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
             -DTRANSCRIBE_BUILD_TOOLS=OFF > /tmp/transcribe-cmake.log 2>&1
           cmake --build /tmp/transcribe-android -j "$(nproc)" > /tmp/transcribe-build.log 2>&1
-          lib=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
-          test -n "$lib" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
-          mkdir -p android/app/src/main/jniLibs/arm64-v8a
-          cp "$lib" android/app/src/main/jniLibs/arm64-v8a/
+          # libtranscribe.so links ggml siblings by DT_NEEDED versioned
+          # names; bundling the top library alone fails at dlopen time.
+          # Stage the top library (dereferenced to its bytes) plus every
+          # DT_NEEDED sibling found in the build tree.
+          top=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
+          test -n "$top" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
+          mkdir -p /tmp/transcribe-jni android/app/src/main/jniLibs/arm64-v8a
+          cp -L "$top" /tmp/transcribe-jni/libtranscribe.so
+          needed=$(readelf -d /tmp/transcribe-jni/libtranscribe.so | grep -o '\[lib[^]]*\]' | tr -d '[]')
+          for name in $needed; do
+            src=$(find /tmp/transcribe-android -name "$name" | head -n 1)
+            if [ -z "$src" ]; then echo "system library: $name"; continue; fi
+            cp -L "$src" "/tmp/transcribe-jni/$name"
+          done
+          cp /tmp/transcribe-jni/*.so* android/app/src/main/jniLibs/arm64-v8a/
           ls -la android/app/src/main/jniLibs/arm64-v8a/
       - name: ☕ Setup Java
         uses: actions/setup-java@v4
