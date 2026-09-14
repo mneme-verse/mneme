@@ -54,7 +54,12 @@ jobs:
         run: |
           sdkmanager --install "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-24" 2>&1 | tail -n 1
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
-          cmake -S third_party/transcribe.cpp -B /tmp/transcribe-android \
+          # Android builds go through a wrapper (tool/cmake) that forces
+          # plain .so names: versioned files never reach the APK and the
+          # loader resolves each dependency by exact filename. Desktop
+          # builds configure the tree directly and keep versioned names.
+          cmake -S "${{ github.workspace }}/tool/cmake" -B /tmp/transcribe-android \
+            -DTRANSCRIBE_SOURCE_DIR="${{ github.workspace }}/third_party/transcribe.cpp" \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
@@ -64,17 +69,19 @@ jobs:
             -DTRANSCRIBE_BUILD_EXAMPLES=OFF \
             -DTRANSCRIBE_BUILD_TOOLS=OFF > /tmp/transcribe-cmake.log 2>&1
           cmake --build /tmp/transcribe-android -j "$(nproc)" > /tmp/transcribe-build.log 2>&1
-          # libtranscribe.so links ggml siblings by DT_NEEDED versioned
-          # names, and those siblings may link further bundled libraries:
-          # stage the top library plus the transitive DT_NEEDED closure
-          # found in the build tree. Anything unresolvable is a system
-          # library. Bundling only the top library fails at dlopen time.
+          # libtranscribe.so links ggml siblings by DT_NEEDED names, and
+          # those siblings may link further bundled libraries: stage the
+          # top library plus the transitive DT_NEEDED closure found in the
+          # build tree. Anything unresolvable is a system library.
+          # Bundling only the top library fails at dlopen time.
           top=$(find /tmp/transcribe-android -name 'libtranscribe.so' | head -n 1)
           test -n "$top" || { tail -n 30 /tmp/transcribe-build.log; exit 1; }
           mkdir -p /tmp/transcribe-jni android/app/src/main/jniLibs/arm64-v8a
           cp -L "$top" /tmp/transcribe-jni/libtranscribe.so
           staged="libtranscribe.so"
-          queue=$(readelf -d /tmp/transcribe-jni/libtranscribe.so | grep '(NEEDED)' | grep -o '\[lib[^]]*\]' | tr -d '[]')
+          needed() { readelf -d "$1" | grep -o '\[lib[^]]*\]' | tr -d '[]'; }
+          queue=$(needed /tmp/transcribe-jni/libtranscribe.so)
+          echo "DT_NEEDED closure seed: $queue"
           while [ -n "$queue" ]; do
             next=""
             for name in $queue; do
@@ -83,10 +90,13 @@ jobs:
               if [ -z "$src" ]; then echo "system library: $name"; continue; fi
               cp -L "$src" "/tmp/transcribe-jni/$name"
               staged="$staged $name"
-              next="$next $(readelf -d "/tmp/transcribe-jni/$name" | grep '(NEEDED)' | grep -o '\[lib[^]]*\]' | tr -d '[]')"
+              next="$next $(needed "/tmp/transcribe-jni/$name")"
             done
             queue="$next"
           done
+          echo "staged:$staged"
+          count=$(ls /tmp/transcribe-jni/*.so* | wc -l)
+          test "$count" -ge 4 || { echo "::error::expected at least 4 staged libs, got $count:$staged"; exit 1; }
           cp /tmp/transcribe-jni/*.so* android/app/src/main/jniLibs/arm64-v8a/
           ls -la android/app/src/main/jniLibs/arm64-v8a/
       - name: ☕ Setup Java
@@ -164,11 +174,14 @@ jobs:
             exit $code
           fi
           ls -la build/app/outputs/flutter-apk/
-          # Versioned ggml siblings must survive packaging: a missing
-          # entry means the engine cannot load on device.
+          # Plain-named native libraries must survive packaging: a missing
+          # entry means the engine cannot load on device. Herestrings, not
+          # a pipe: grep -q closing early on a pipe can SIGPIPE unzip
+          # under pipefail.
           apk=$(ls build/app/outputs/flutter-apk/app-production-release.apk)
-          for lib in libtranscribe.so libggml.so.0 libggml-base.so.0 libggml-cpu.so.0; do
-            unzip -l "$apk" | grep -q "$lib" || { echo "::error::APK is missing $lib"; exit 1; }
+          apk_contents=$(unzip -l "$apk")
+          for lib in libtranscribe.so libggml.so libggml-base.so libggml-cpu.so; do
+            grep -q "/$lib$" <<< "$apk_contents" || { echo "::error::APK is missing $lib"; exit 1; }
           done
           echo "APK native libraries verified."
       - name: 🚀 Publish to GitHub Release
