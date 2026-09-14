@@ -89,7 +89,7 @@ class _RecitationPageState extends State<RecitationPage> {
       _cubit.stop();
       setState(() => _error = e.message);
       return;
-    } catch (e) {
+    } on Object catch (e) {
       _cubit.stop();
       setState(() => _error = '$e');
       return;
@@ -102,7 +102,7 @@ class _RecitationPageState extends State<RecitationPage> {
   Future<void> _stop() async {
     try {
       await _driver.stop();
-    } catch (e) {
+    } on Object catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
     _cubit.stop();

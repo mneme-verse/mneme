@@ -82,7 +82,7 @@ class RecitationDriver {
           try {
             engine.feed(_toFloat32(chunk));
             onTranscript(engine.text());
-          } catch (error) {
+          } on Object catch (error) {
             // A broken engine must surface, not stall the take: tear it
             // down and report. Never rethrow into the stream (unhandled),
             // and the guard in [_fail] keeps the report singular.
@@ -111,16 +111,16 @@ class RecitationDriver {
     _listening = false;
     try {
       await _subscription?.cancel();
-    } catch (_) {}
+    } on Object catch (_) {}
     _subscription = null;
     try {
       await _audio.stop();
-    } catch (_) {}
+    } on Object catch (_) {}
     final engine = _engine;
     _engine = null;
     try {
       engine?.dispose();
-    } catch (_) {}
+    } on Object catch (_) {}
     onError(error);
   }
 
