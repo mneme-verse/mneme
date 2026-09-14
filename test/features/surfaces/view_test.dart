@@ -56,12 +56,15 @@ Future<void> pumpLocalized(
 }
 
 void main() {
+  // Registered once for the whole file: mocktail fallbacks are global,
+  // and shuffled test order must never depend on another group's setUp.
+  setUpAll(() => registerFallbackValue(fsrs.Rating.good));
+
   group('ReaderView', () {
     late ReaderCubit cubit;
 
     setUp(() {
       cubit = MockReaderCubit();
-      registerFallbackValue(fsrs.Rating.good);
     });
 
     testWidgets('shows poem title and body when loaded', (tester) async {

@@ -100,8 +100,113 @@ void main() {
     );
   });
 
+  group('range resume', () {
+    late Directory dir;
+    late ResourceInstaller installer;
+
+    setUp(() {
+      dir = Directory('${tempDir.path}/resume')..createSync();
+      installer = ResourceInstaller(
+        client: _ScriptedClient((request) => handler(request)),
+        destinationDir: dir,
+      );
+    });
+
+    /// Serves [payload] with Range support: 206 slices, 416 past the end,
+    /// 200 full bodies when the test ignores the header.
+    Future<http.StreamedResponse> rangeHandler(
+      http.BaseRequest request, {
+      bool honorRange = true,
+      int rangeSkew = 0,
+    }) async {
+      requests++;
+      final range = request.headers['Range'];
+      if (honorRange && range != null) {
+        final start = int.parse(range.split('=')[1].split('-')[0]);
+        if (start > payload.length) {
+          return http.StreamedResponse(const Stream.empty(), 416);
+        }
+        return http.StreamedResponse(
+          Stream.value(payload.sublist(start)),
+          206,
+          contentLength: payload.length - start,
+          headers: {
+            'content-range':
+                'bytes ${start + rangeSkew}-${payload.length - 1}/${payload.length}',
+          },
+        );
+      }
+      return _bytesResponse(payload);
+    }
+
+    test('interrupted download resumes from the surviving part', () async {
+      handler = rangeHandler;
+      final half = payload.length ~/ 2;
+      File(
+        '${dir.path}/resume.bin.part',
+      ).writeAsBytesSync(payload.sublist(0, half));
+
+      final installed = await installer.install(
+        'resume.bin',
+        Uri.parse(packUrl('resume.bin')),
+        shaOf(payload),
+      );
+
+      expect(installed.readAsBytesSync(), payload);
+      expect(requests, 1);
+    });
+
+    test('a server ignoring Range restarts the transfer', () async {
+      handler = (request) => rangeHandler(request, honorRange: false);
+      File('${dir.path}/clean.bin.part').writeAsBytesSync([1, 2, 3]);
+
+      final installed = await installer.install(
+        'clean.bin',
+        Uri.parse(packUrl('clean.bin')),
+        shaOf(payload),
+      );
+
+      expect(installed.readAsBytesSync(), payload);
+      expect(requests, 2);
+    });
+
+    test('a mismatched range restarts instead of corrupting', () async {
+      handler = (request) => rangeHandler(request, rangeSkew: 7);
+      final half = payload.length ~/ 2;
+      File(
+        '${dir.path}/skewed.bin.part',
+      ).writeAsBytesSync(payload.sublist(0, half));
+
+      final installed = await installer.install(
+        'skewed.bin',
+        Uri.parse(packUrl('skewed.bin')),
+        shaOf(payload),
+      );
+
+      expect(installed.readAsBytesSync(), payload);
+      expect(requests, 2);
+    });
+
+    test('a stale oversized part restarts after 416', () async {
+      handler = rangeHandler;
+      File('${dir.path}/stale.bin.part').writeAsBytesSync([
+        ...payload,
+        9,
+        9,
+      ]);
+
+      final installed = await installer.install(
+        'stale.bin',
+        Uri.parse(packUrl('stale.bin')),
+        shaOf(payload),
+      );
+
+      expect(installed.readAsBytesSync(), payload);
+      expect(requests, 2);
+    });
+  });
   test(
-    'cancellation removes the partial download and reports notInstalled',
+    'cancellation keeps the partial download for resume',
     () async {
       final gate = Completer<void>();
       handler = (request) async {
@@ -139,7 +244,8 @@ void main() {
       );
       expect(
         File('${tempDir.path}/corpora/slow.bin.part').existsSync(),
-        isFalse,
+        isTrue,
+        reason: 'a canceled transfer resumes instead of restarting',
       );
     },
   );

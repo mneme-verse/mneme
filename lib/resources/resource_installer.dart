@@ -84,24 +84,95 @@ class ResourceInstaller {
 
     await destinationDir.create(recursive: true);
     final partial = File('${destination.path}.part');
-    final sink = partial.openWrite();
+    // Resume interrupted downloads: a surviving `.part` file restarts the
+    // transfer where it stalled (screen lock, Doze, dead zone) instead of
+    // from zero. Both release CDNs honor Range; a server that answers 200
+    // restarts cleanly, and 416 (stale oversized part) does too.
+    final resumeFrom = _prefixLength(partial);
+    try {
+      return await _attemptInstall(
+        id: id,
+        url: url,
+        expectedSha256: expectedSha256,
+        expectedSize: expectedSize,
+        cancelToken: cancelToken,
+        onProgress: onProgress,
+        partial: partial,
+        destination: destination,
+        resumeFrom: resumeFrom,
+      );
+    } on _RestartCleanly {
+      // The prefix cannot be continued: wipe it and transfer once from
+      // zero. A second restart signal is a server failure, not a stale
+      // prefix, so it propagates.
+      if (partial.existsSync()) partial.deleteSync();
+      return _attemptInstall(
+        id: id,
+        url: url,
+        expectedSha256: expectedSha256,
+        expectedSize: expectedSize,
+        cancelToken: cancelToken,
+        onProgress: onProgress,
+        partial: partial,
+        destination: destination,
+        resumeFrom: 0,
+      );
+    }
+  }
+
+  /// Transfers one attempt, resuming from [resumeFrom] when positive.
+  /// Throws [_RestartCleanly] when the server refuses the prefix.
+  Future<File> _attemptInstall({
+    required String id,
+    required Uri url,
+    required String expectedSha256,
+    required int? expectedSize,
+    required InstallCancelToken? cancelToken,
+    required void Function(InstallProgress progress)? onProgress,
+    required File partial,
+    required File destination,
+    required int resumeFrom,
+  }) async {
     final digestSink = _DigestCollector();
     final hasher = sha256.startChunkedConversion(digestSink);
-    var received = 0;
+    if (resumeFrom > 0) {
+      await partial.openRead().forEach(hasher.add);
+    }
+    var received = resumeFrom;
     var total = expectedSize;
+    final sink = partial.openWrite(
+      mode: resumeFrom > 0 ? FileMode.append : FileMode.write,
+    );
 
     try {
-      final request = http.Request('GET', url)
-        ..followRedirects = true
-        ..maxRedirects = 5;
-      final response = await _client.send(request);
-      if (response.statusCode != 200) {
+      final response = await _sendRange(url, resumeFrom);
+      if (response.statusCode == 416 && resumeFrom > 0) {
+        await response.stream.drain<void>();
+        throw const _RestartCleanly();
+      }
+      if (response.statusCode != 200 && response.statusCode != 206) {
         await response.stream.drain<void>();
         throw HttpException(
           'Unexpected status ${response.statusCode} for $url',
         );
       }
-      total = expectedSize ?? response.contentLength ?? 0;
+      if (response.statusCode == 200 && resumeFrom > 0) {
+        // The server ignored Range: cancel the redundant body at once
+        // instead of draining hundreds of megabytes, then restart.
+        await response.stream.listen(null).cancel();
+        throw const _RestartCleanly();
+      }
+      if (response.statusCode == 206 && !_rangeStartsAt(response, resumeFrom)) {
+        // A proxy answered a different slice than requested: appending
+        // it would waste the transfer and fail the hash at the end.
+        await response.stream.listen(null).cancel();
+        throw const _RestartCleanly();
+      }
+      total =
+          expectedSize ??
+          (response.statusCode == 206
+              ? resumeFrom + (response.contentLength ?? 0)
+              : response.contentLength ?? 0);
       await for (final chunk in response.stream) {
         if (cancelToken?.isCanceled ?? false) {
           // The `await for` below cancels its subscription when this
@@ -143,13 +214,40 @@ class ResourceInstaller {
       }
       await partial.rename(destination.path);
       return destination;
-    } catch (_) {
+    } catch (error) {
       await sink.close();
-      if (partial.existsSync()) {
-        partial.deleteSync();
+      if (error is HashMismatchException || error is _RestartCleanly) {
+        // A wrong prefix can never resume: drop it so the next attempt
+        // starts clean. Canceled and failed transfers keep their prefix
+        // for resume.
+        if (partial.existsSync()) partial.deleteSync();
       }
       rethrow;
     }
+  }
+
+  /// Sends GET, asking to resume from [from] when positive.
+  Future<http.StreamedResponse> _sendRange(Uri url, int from) {
+    final request = http.Request('GET', url)
+      ..followRedirects = true
+      ..maxRedirects = 5;
+    if (from > 0) request.headers['Range'] = 'bytes=$from-';
+    return _client.send(request);
+  }
+
+  /// Whether a 206 response continues at [from], per its Content-Range.
+  /// A missing or mismatched range means a proxy answered a different
+  /// slice: appending it would corrupt the file and fail the hash.
+  bool _rangeStartsAt(http.StreamedResponse response, int from) {
+    final header = response.headers['content-range'];
+    if (header == null) return false;
+    return header.startsWith('bytes $from-');
+  }
+
+  /// Length of a resumable prefix, zero when absent.
+  int _prefixLength(File partial) {
+    if (!partial.existsSync()) return 0;
+    return partial.lengthSync();
   }
 
   /// Destination file for [id] without touching the filesystem.
@@ -221,4 +319,10 @@ class _DigestCollector implements Sink<Digest> {
 
   @override
   void close() {}
+}
+
+/// Signals that the server refused the resume prefix: the caller wipes
+/// it and transfers once from zero.
+class _RestartCleanly implements Exception {
+  const _RestartCleanly();
 }

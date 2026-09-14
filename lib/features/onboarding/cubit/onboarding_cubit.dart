@@ -5,6 +5,7 @@ import 'package:mneme/resources/corpus_manifest.dart';
 import 'package:mneme/resources/resource_installer.dart';
 import 'package:mneme/resources/resource_locks.dart';
 import 'package:mneme/resources/resource_repository.dart';
+import 'package:mneme/resources/wake_lock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Phases of first-run resource installation.
@@ -87,16 +88,23 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     required CorpusManifestClient manifestClient,
     LockedResource? speechModel,
     SharedPreferences? prefs,
+    DeviceWakeLock? wakeLock,
   }) : _resources = resources,
        _manifestClient = manifestClient,
        _speechModel = speechModel ?? defaultSpeechModel(),
        _prefs = prefs,
+       _wakeLock = wakeLock ?? const WakelockPlusDevice(),
        super(const OnboardingState.languageSelection());
   final ResourceRepository _resources;
   final CorpusManifestClient _manifestClient;
   final LockedResource _speechModel;
   final SharedPreferences? _prefs;
+  final DeviceWakeLock _wakeLock;
   _OnboardingRun? _run;
+  // Run whose enable currently holds the process-wide wake toggle ON.
+  // The OS lock is not reference-counted: a superseded run must only undo
+  // its own enable when nobody holds the toggle, never a replacement's.
+  _OnboardingRun? _wakeOwner;
 
   Future<SharedPreferences> _resolvePrefs() async =>
       _prefs ?? SharedPreferences.getInstance();
@@ -112,12 +120,19 @@ class OnboardingCubit extends Cubit<OnboardingState> {
     // A new run supersedes any previous one, including a manifest fetch
     // that has no resource token yet. The old installer keeps running in
     // the background, but its emissions and cleanup no longer apply.
+    // Cancel first, synchronously: a predecessor parked in acquire sees
+    // the dead token the moment it resumes, even while this run awaits
+    // the balance below. Token liveness therefore implies currency.
     _run?.token.cancel();
+    // Balance a previous run's lock: releases are idempotent, and the
+    // superseded run's finally skips its own cleanup.
+    if (_run != null) {
+      await _releaseLock();
+      _wakeOwner = null;
+    }
     await _run?.subscription?.cancel();
     final run = _run = _OnboardingRun(InstallCancelToken());
     run.subscription = _resources.states.listen((update) {
-      // Mirror byte progress into the installing state. Stale runs and
-      // post-completion events are ignored by identity and phase.
       if (!identical(_run, run)) return;
       if (state.phase != OnboardingPhase.installing) return;
       emit(
@@ -138,6 +153,23 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       ),
     );
 
+    // Hold the device awake for the whole install: multi-hundred-megabyte
+    // downloads stall when the screen locks. Best-effort: onboarding must
+    // never fail because the lock is unavailable (desktop shells, broken
+    // plugins).
+    try {
+      await _wakeLock.acquire();
+      if (!run.token.isCanceled && identical(_run, run)) {
+        _wakeOwner = run;
+      } else if (_wakeOwner == null) {
+        // Stale enable on a toggle nobody holds: undo it. A held toggle
+        // means a newer run subsumed this enable; releasing here would
+        // drop the replacement run's lock.
+        await _releaseLock();
+      }
+      // A lock that cannot be held is not an install failure; the
+      // transfer still resumes where it stalled.
+    } on Exception catch (_) {}
     try {
       final pack = await _manifestClient.packFor(language);
       if (run.token.isCanceled) throw InstallCanceledException(pack.file);
@@ -192,6 +224,10 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       if (identical(_run, run)) {
         await run.subscription?.cancel();
         _run = null;
+        if (_wakeOwner == run) {
+          await _releaseLock();
+          _wakeOwner = null;
+        }
       }
     }
   }
@@ -217,9 +253,29 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
   @override
   Future<void> close() async {
-    _run?.token.cancel();
-    await _run?.subscription?.cancel();
+    // Clear synchronously before awaiting teardown: a run still parked in
+    // acquire must resume as stale (dead token, no ownership) instead of
+    // treating itself as current and resurrecting the lock past disposal.
+    final run = _run;
+    _run = null;
+    _wakeOwner = null;
+    run?.token.cancel();
+    await run?.subscription?.cancel();
+    // A run stuck where the token never lands (manifest fetch) would
+    // otherwise hold the OS lock past disposal.
+    await _releaseLock();
     return super.close();
+  }
+
+  /// Releases the OS wake lock without ever failing. Releases are
+  /// idempotent: balancing, owner settle, and teardown may each release,
+  /// and stray releases are safe no-ops. A superseded enable subsumed by
+  /// a newer owner's is deliberately left unpaired.
+  Future<void> _releaseLock() async {
+    try {
+      await _wakeLock.release();
+      // A lock that cannot be released is not an install failure.
+    } on Exception catch (_) {}
   }
 }
 
