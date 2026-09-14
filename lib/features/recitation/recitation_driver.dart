@@ -26,17 +26,24 @@ class RecitationDriver {
   /// fakes so takes run in unit tests without a microphone or library.
   /// [onTranscript] receives interim and final transcripts; it is
   /// settable so owners can rewire delivery after construction.
+  /// [onError] reports a take torn down by a mid-take engine or
+  /// microphone failure; without it the take would stall silently.
   RecitationDriver({
     required this.modelPath,
     void Function(String text)? onTranscript,
+    void Function(Object error)? onError,
     AudioInput? audio,
     TranscribeEngine Function(String modelPath)? openEngine,
   }) : onTranscript = onTranscript ?? _ignore,
+       onError = onError ?? _ignoreError,
        _audio = audio ?? RecordAudioInput(),
        _openEngine = openEngine ?? TranscribeEngine.new;
 
   /// Receives interim and final transcripts.
   void Function(String text) onTranscript;
+
+  /// Reports a torn-down take. Settable like [onTranscript].
+  void Function(Object error) onError;
 
   /// Model file fed to the native session.
   final String modelPath;
@@ -49,6 +56,9 @@ class RecitationDriver {
 
   /// Drops transcripts when no owner is wired.
   static void _ignore(String _) {}
+
+  /// Drops errors when no owner is wired.
+  static void _ignoreError(Object _) {}
 
   /// Whether a take is in progress.
   bool get isListening => _listening;
@@ -69,10 +79,20 @@ class RecitationDriver {
       _listening = true;
       _subscription = stream.listen(
         (chunk) {
-          engine.feed(_toFloat32(chunk));
-          onTranscript(engine.text());
+          try {
+            engine.feed(_toFloat32(chunk));
+            onTranscript(engine.text());
+          } on Object catch (error) {
+            // A broken engine must surface, not stall the take: tear it
+            // down and report. Never rethrow into the stream (unhandled),
+            // and the guard in [_fail] keeps the report singular.
+            unawaited(_fail(error));
+          }
         },
-        onError: (_) {},
+        onError: (Object error) {
+          // A dying microphone stalls the take the same way: surface it.
+          unawaited(_fail(error));
+        },
       );
     } catch (_) {
       engine.dispose();
@@ -80,14 +100,47 @@ class RecitationDriver {
     }
   }
 
+  /// Tears a broken take down and reports the failure through [onError].
+  ///
+  /// Releases the subscription, recorder, and session (skipping the final
+  /// transcript: the engine is broken, so finalizing would only throw
+  /// again), then reports. Singular: concurrent chunk errors collapse
+  /// into the first report via [_listening].
+  Future<void> _fail(Object error) async {
+    if (!_listening) return;
+    _listening = false;
+    try {
+      await _subscription?.cancel();
+    } on Object catch (_) {}
+    _subscription = null;
+    try {
+      await _audio.stop();
+    } on Object catch (_) {}
+    final engine = _engine;
+    _engine = null;
+    try {
+      engine?.dispose();
+    } on Object catch (_) {}
+    onError(error);
+  }
+
   /// Stops the take, delivers the final transcript, and frees the
-  /// session. Safe to call when idle.
+  /// session. Safe to call when idle. A failing recorder stop still
+  /// releases the session: teardown runs to completion either way.
   Future<void> stop() async {
     if (!_listening) return;
     _listening = false;
-    await _subscription?.cancel();
-    _subscription = null;
-    await _audio.stop();
+    try {
+      await _subscription?.cancel();
+      _subscription = null;
+      await _audio.stop();
+    } finally {
+      _releaseEngine();
+    }
+  }
+
+  /// Delivers the final transcript and frees the session, if any.
+  void _releaseEngine() {
     final engine = _engine;
     _engine = null;
     if (engine == null) return;
@@ -98,7 +151,6 @@ class RecitationDriver {
     }
   }
 
-  /// Releases the recorder and any live session.
   Future<void> dispose() async {
     _listening = false;
     await _subscription?.cancel();

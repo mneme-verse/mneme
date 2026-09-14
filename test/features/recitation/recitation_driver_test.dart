@@ -19,6 +19,9 @@ class FakeAudioInput implements AudioInput {
   /// Permission answer.
   bool permission = true;
 
+  /// Overrides stop, null for the default counting behavior.
+  Future<void> Function()? stopHook;
+
   /// Stop call count.
   int stops = 0;
 
@@ -37,6 +40,7 @@ class FakeAudioInput implements AudioInput {
   @override
   Future<void> stop() async {
     stops++;
+    await stopHook?.call();
   }
 
   @override
@@ -140,6 +144,68 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(transcripts, isEmpty);
       await driver.stop();
+    });
+
+    test('feed failure tears the take down and reports once', () async {
+      final errors = <Object>[];
+      final driver = RecitationDriver(
+        modelPath: 'model.gguf',
+        onTranscript: transcripts.add,
+        onError: errors.add,
+        audio: audio,
+        openEngine: (path) => TranscribeEngine(path, open: () => bindings),
+      );
+      addTearDown(driver.dispose);
+      when(
+        () => bindings.streamFeed(any(), any()),
+      ).thenThrow(const TranscribeEngineException('overrun fault'));
+      await driver.start();
+      audio
+        ..pushChunk(pcm16([1, 2, 3, 4]))
+        ..pushChunk(pcm16([5, 6, 7, 8]));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // The take is over: one report, no transcripts, session released,
+      // recorder stopped, and no finalize on the broken engine.
+      expect(driver.isListening, isFalse);
+      expect(errors.single, isA<TranscribeEngineException>());
+      expect(transcripts, isEmpty);
+      expect(audio.stops, 1);
+      verifyNever(() => bindings.streamFinalize(any()));
+      verify(() => bindings.freeSession(any())).called(1);
+    });
+
+    test('microphone failure tears the take down and reports', () async {
+      final errors = <Object>[];
+      final driver = RecitationDriver(
+        modelPath: 'model.gguf',
+        onTranscript: transcripts.add,
+        onError: errors.add,
+        audio: audio,
+        openEngine: (path) => TranscribeEngine(path, open: () => bindings),
+      );
+      addTearDown(driver.dispose);
+      await driver.start();
+      audio.controller.addError(Exception('mic lost'));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(driver.isListening, isFalse);
+      expect(errors.single, isA<Exception>());
+      expect(transcripts, isEmpty);
+      expect(audio.stops, 1);
+      verifyNever(() => bindings.streamFinalize(any()));
+      verify(() => bindings.freeSession(any())).called(1);
+    });
+
+    test('failing recorder stop still releases the session', () async {
+      audio.stopHook = () => throw StateError('stop stuck');
+      final driver = openDriver();
+      addTearDown(driver.dispose);
+      await driver.start();
+      await expectLater(driver.stop(), throwsStateError);
+      expect(driver.isListening, isFalse);
+      // The final transcript still delivers before the session frees.
+      expect(transcripts, ['heard words']);
+      verify(() => bindings.streamFinalize(any())).called(1);
+      verify(() => bindings.freeSession(any())).called(1);
     });
 
     test('stop while idle is a no-op', () async {
