@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:logging/logging.dart';
 import 'package:native_toolchain_cmake/native_toolchain_cmake.dart';
@@ -16,9 +15,21 @@ void main(List<String> args) async {
   await build(args, (input, output) async {
     final logger = Logger('mneme')
       ..onRecord.listen((record) => stderr.writeln(record.message));
+    // CI test checkouts and submodule-less trees skip: unit tests mock
+    // the engine, and release APKs carry the NDK-built library in
+    // jniLibs. Run `git submodule update --init` for desktop takes.
+    final sourceDir = input.packageRoot.resolve(
+      'third_party/transcribe.cpp/',
+    );
+    if (!File.fromUri(sourceDir.resolve('CMakeLists.txt')).existsSync()) {
+      logger.warning(
+        'Skipping native engine build: submodule not checked out.',
+      );
+      return;
+    }
     final builder = CMakeBuilder.create(
       name: 'transcribe',
-      sourceDir: input.packageRoot.resolve('third_party/transcribe.cpp/'),
+      sourceDir: sourceDir,
       defines: const {
         'CMAKE_BUILD_TYPE': 'Release',
         'TRANSCRIBE_BUILD_SHARED': 'ON',
