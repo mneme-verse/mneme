@@ -28,7 +28,7 @@ dependencies:
   path: ^1.9.1
   path_provider: ^2.1.5
   record: ^7.1.1
-  shared_preferences: ^2.5.4
+  shared_preferences: ^2.5.5
   sqlite3: ^2.9.0
   sqlite3_flutter_libs: ^0.5.41
   unorm_dart: 0.3.2
